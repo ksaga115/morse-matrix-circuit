@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Morse Matrix Circuit v2</title>
+    <style>
+        :root {
+            --bg: #050505;
+            --panel-bg: #0d1117;
+            --line-dim: #1a1a1a;
+            --gold: #8c7340;
+            --active: #f6e62e;
+            --dot-color: #00d4ff;
+            --dash-color: #ff3333;
+            --unit-w: 45px;
+            --unit-h: 38px;
+            --ox: 40px;
+            --oy: 45px;
+        }
+
+        /* iOSでの誤作動防止（長押し・選択・ズームの禁止） */
+        * {
+            -webkit-touch-callout: none;
+            -webkit-user-select: none;
+            -khtml-user-select: none;
+            -moz-user-select: none;
+            -ms-user-select: none;
+            user-select: none;
+            touch-action: manipulation;
+            box-sizing: border-box;
+        }
+
+        body { 
+            background: var(--bg); color: #adbac7; font-family: 'Consolas', 'Courier New', monospace; 
+            margin: 0; display: flex; flex-direction: column; align-items: center; height: 100vh; overflow: hidden;
+        }
+
+        /* 1. 出力セクション */
+        .output-section {
+            width: 100%; padding: 15px; background: var(--panel-bg); 
+            display: grid; grid-template-columns: 1fr 2fr; gap: 10px;
+            border-bottom: 1px solid #222;
+        }
+        .display-box { background: #000; border: 1px solid #222; padding: 10px; border-radius: 4px; min-height: 55px; }
+        .label { font-size: 0.6rem; color: #555; margin-bottom: 4px; text-transform: uppercase; }
+        #code-monitor { font-size: 1.1rem; color: #539bf5; min-height: 1.2em; letter-spacing: 3px; }
+        #message-box { font-size: 1.4rem; color: var(--active); min-height: 1.2em; word-break: break-all; }
+
+        /* 2. チャート表示セクション */
+        #chart-viewport {
+            flex: 1; width: 100%; display: flex; justify-content: center; align-items: center; 
+            overflow: auto; /* はみ出した場合にスクロール可能に */
+            background: radial-gradient(circle, #080808 0%, #000 100%);
+        }
+        #chart { 
+            position: relative; 
+            width: 450px; /* ユニットサイズに基づき調整 */
+            height: 350px; 
+            /* iPhoneの画面サイズに合わせて自動スケーリングさせたい場合はここを調整 */
+        }
+
+        svg { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 1; }
+        path { fill: none; stroke: var(--line-dim); stroke-width: 1.5; transition: stroke 0.2s; }
+        path.active-dot { stroke: var(--dot-color); stroke-width: 3; filter: drop-shadow(0 0 4px var(--dot-color)); }
+        path.active-dash { stroke: var(--dash-color); stroke-width: 3; filter: drop-shadow(0 0 4px var(--dash-color)); }
+
+        .node {
+            position: absolute; width: 20px; height: 20px; border: 1px solid var(--gold);
+            display: flex; align-items: center; justify-content: center;
+            font-size: 0.7rem; font-weight: bold; background: #000; color: var(--gold);
+            transition: 0.2s; transform: translate(-50%, -50%); z-index: 10;
+        }
+        .node.active { background: var(--active); color: #000; box-shadow: 0 0 12px var(--active); border-color: #fff; }
+
+        /* 3. コントロールセクション */
+        .controls {
+            width: 100%; padding: 20px; background: var(--panel-bg);
+            border-top: 1px solid #222; display: flex; justify-content: space-between; align-items: center;
+            padding-bottom: calc(20px + env(safe-area-inset-bottom));
+        }
+        .param-group { display: flex; flex-direction: column; gap: 10px; }
+        .param { display: flex; align-items: center; gap: 12px; font-size: 0.7rem; color: #888; }
+        .param span:first-child { width: 80px; }
+        input[type=range] { width: 90px; accent-color: var(--gold); }
+        
+        #tap-btn {
+            width: 95px; height: 95px; border-radius: 50%; border: 4px solid var(--gold);
+            background: radial-gradient(circle, #222, #000); color: #fff;
+            cursor: pointer; font-size: 0.9rem; font-weight: bold; font-family: inherit;
+            -webkit-tap-highlight-color: transparent;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.5);
+        }
+        #tap-btn:active { background: #333; transform: scale(0.94); box-shadow: none; }
+        
+        .reset-btn { 
+            background: #2a0000; color: #ff6666; border: 1px solid #552222; 
+            padding: 6px 12px; border-radius: 4px; font-size: 0.7rem; cursor: pointer;
+            margin-top: 8px; text-align: center;
+        }
+    </style>
+</head>
+<body>
+
+<div class="output-section">
+    <div class="display-box">
+        <div class="label">Incoming Code</div>
+        <div id="code-monitor"></div>
+    </div>
+    <div class="display-box">
+        <div class="label">Decoded Message</div>
+        <div id="message-box"></div>
+    </div>
+</div>
+
+<div id="chart-viewport">
+    <div id="chart">
+        <svg id="lines"></svg>
+        <div class="node active" id="n-start" data-x="3" data-y="0">S</div>
+        
+        <div class="node" id="n-o" data-x="0" data-y="-1">O</div>
+        <div class="node" id="n-m" data-x="1" data-y="-1">M</div>
+        <div class="node" id="n-t" data-x="2" data-y="-1">T</div>
+        <div class="node" id="n-q" data-x="0" data-y="-2">Q</div>
+        <div class="node" id="n-g" data-x="1" data-y="-2">G</div>
+        <div class="node" id="n-z" data-x="1" data-y="-3">Z</div>
+        <div class="node" id="n-y" data-x="0" data-y="-4">Y</div>
+        <div class="node" id="n-k" data-x="1" data-y="-4">K</div>
+        <div class="node" id="n-n" data-x="2" data-y="-4">N</div>
+        <div class="node" id="n-c" data-x="1" data-y="-5">C</div>
+        <div class="node" id="n-x" data-x="1" data-y="-6">X</div>
+        <div class="node" id="n-d" data-x="2" data-y="-6">D</div>
+        <div class="node" id="n-b" data-x="2" data-y="-7">B</div>
+
+        <div class="node" id="n-e" data-x="4" data-y="-1">E</div>
+        <div class="node" id="n-i" data-x="5" data-y="-1">I</div>
+        <div class="node" id="n-s" data-x="7" data-y="-1">S</div>
+        <div class="node" id="n-h" data-x="8" data-y="-1">H</div>
+        <div class="node" id="n-u" data-x="5" data-y="-2">U</div>
+        <div class="node" id="n-f" data-x="6" data-y="-2">F</div>
+        <div class="node" id="n-v" data-x="7" data-y="-2">V</div>
+        <div class="node" id="n-a" data-x="4" data-y="-4">A</div>
+        <div class="node" id="n-r" data-x="5" data-y="-4">R</div>
+        <div class="node" id="n-l" data-x="7" data-y="-4">L</div>
+        <div class="node" id="n-w" data-x="4" data-y="-6">W</div>
+        <div class="node" id="n-p" data-x="5" data-y="-6">P</div>
+        <div class="node" id="n-j" data-x="4" data-y="-7">J</div>
+    </div>
+</div>
+
+<div class="controls">
+    <div class="param-group">
+        <div class="param">
+            <span>DASH-TH</span>
+            <input type="range" id="dash-thresh" min="100" max="400" value="200">
+            <span id="v-dash">200ms</span>
+        </div>
+        <div class="param">
+            <span>WAIT-TH</span>
+            <input type="range" id="wait-thresh" min="400" max="1500" value="800">
+            <span id="v-wait">800ms</span>
+        </div>
+        <div class="reset-btn" onclick="fullReset()">SYSTEM RESET</div>
+    </div>
+    <button id="tap-btn">SIGNAL</button>
+</div>
+
+<script>
+    // 1. 全アルファベット辞書（省略なし）
+    const morseDict = {
+        "・":"E","・・":"I","・・・":"S","・・・・":"H","・ー":"A","・ー・":"R","・ー・・":"L","・・ー":"U","・・ー・":"F","・・・ー":"V","・ーー":"W","・ーー・":"P","・ーーー":"J",
+        "ー":"T","ーー":"M","ーーー":"O","ー・":"N","ー・・":"D","ー・・・":"B","ー・ー":"K","ー・ー・":"C","ー・ーー":"Y","ーー・":"G","ーー・・":"Z","ーー・ー":"Q","ー・・ー":"X"
+    };
+
+    // 2. 遷移ツリー（省略なし）
+    const tree = {
+        "start": {"・":"E", "ー":"T"},
+        "E": {"・":"I", "ー":"A"}, "I": {"・":"S", "ー":"U"}, "S": {"・":"H", "ー":"V"}, "U": {"・":"F"},
+        "A": {"・":"R", "ー":"W"}, "R": {"・":"L"}, "W": {"・":"P", "ー":"J"},
+        "T": {"・":"N", "ー":"M"}, "N": {"・":"D", "ー":"K"}, "D": {"・":"B", "ー":"X"}, "M": {"・":"G", "ー":"O"},
+        "G": {"・":"Z", "ー":"Q"}, "K": {"・":"C", "ー":"Y"}
+    };
+
+    const nodes = document.querySelectorAll('.node');
+    const svg = document.getElementById('lines');
+    const uw = 45, uh = 38, ox = 40, oy = 45;
+
+    // 3. 座標計算とノード配置
+    function getPos(id) {
+        const el = document.getElementById(`n-${id.toLowerCase()}`);
+        return el ? { x: parseInt(el.dataset.x) * uw + ox, y: Math.abs(parseInt(el.dataset.y)) * uh + oy } : {x:0, y:0};
+    }
+
+    nodes.forEach(n => {
+        const p = getPos(n.id.replace('n-',''));
+        n.style.left = p.x + "px";
+        n.style.top = p.y + "px";
+    });
+
+    // 4. SVG配線の初期描画
+    for (let from in tree) {
+        for (let sym in tree[from]) {
+            const to = tree[from][sym];
+            const p1 = getPos(from), p2 = getPos(to);
+            const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+            // クランク（カクカク）状に配線
+            path.setAttribute("d", `M ${p1.x} ${p1.y} V ${(p1.y + p2.y) / 2} H ${p2.x} V ${p2.y}`);
+            path.id = `line-${from}-${to}`;
+            svg.appendChild(path);
+        }
+    }
+
+    // 5. ロジック本体
+    let start, timer, code = "";
+    const btn = document.getElementById('tap-btn');
+
+    function update() {
+        // すべてのリセット
+        document.querySelectorAll('.node, path').forEach(el => el.classList.remove('active', 'active-dot', 'active-dash'));
+        document.getElementById('n-start').classList.add('active');
+        
+        let curr = "start";
+        for (let s of code.split('')) {
+            const next = tree[curr] ? tree[curr][s] : null;
+            if (next) {
+                const line = document.getElementById(`line-${curr}-${next}`);
+                if (line) line.classList.add(s === '・' ? 'active-dot' : 'active-dash');
+                const n = document.getElementById(`n-${next.toLowerCase()}`);
+                if (n) n.classList.add('active');
+                curr = next;
+            }
+        }
+    }
+
+    // イベント処理（iPhoneのマルチタッチやマウス両対応）
+    const handleStart = (e) => {
+        e.preventDefault();
+        start = Date.now();
+        clearTimeout(timer);
+    };
+
+    const handleEnd = (e) => {
+        const dur = Date.now() - start;
+        if (!start) return;
+        start = null;
+        
+        code += (dur < document.getElementById('dash-thresh').value) ? "・" : "ー";
+        document.getElementById('code-monitor').innerText = code;
+        update();
+
+        timer = setTimeout(() => {
+            const res = morseDict[code];
+            if (res) document.getElementById('message-box').innerText += res;
+            code = "";
+            document.getElementById('code-monitor').innerText = "";
+            update();
+        }, document.getElementById('wait-thresh').value);
+    };
+
+    btn.addEventListener('touchstart', handleStart);
+    btn.addEventListener('touchend', handleEnd);
+    btn.addEventListener('mousedown', handleStart);
+    btn.addEventListener('mouseup', handleEnd);
+
+    // リセット関数
+    function fullReset() {
+        document.getElementById('message-box').innerText = "";
+        document.getElementById('code-monitor').innerText = "";
+        code = "";
+        update();
+    }
+
+    // 設定スライダー
+    document.getElementById('dash-thresh').oninput = function() { document.getElementById('v-dash').innerText = this.value + "ms"; };
+    document.getElementById('wait-thresh').oninput = function() { document.getElementById('v-wait').innerText = this.value + "ms"; };
+</script>
+</body>
+</html>
