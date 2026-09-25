@@ -2,7 +2,11 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="theme-color" content="#050505">
     <title>Morse Matrix Circuit v2</title>
     <style>
         :root {
@@ -31,16 +35,23 @@
             box-sizing: border-box;
         }
 
+        html { height: 100%; overscroll-behavior: none; }
         body { 
             background: var(--bg); color: #adbac7; font-family: 'Consolas', 'Courier New', monospace; 
-            margin: 0; display: flex; flex-direction: column; align-items: center; height: 100vh; overflow: hidden;
+            margin: 0; display: flex; flex-direction: column; align-items: center; overflow: hidden;
+            /* iOS Safari の URL バー/ツールバー分を除いた実際の表示領域に合わせる */
+            position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+            width: 100%; height: 100vh; height: 100dvh;
+            overscroll-behavior: none;
         }
 
         /* 1. 出力セクション */
         .output-section {
             width: 100%; padding: 15px; background: var(--panel-bg); 
+            padding-top: calc(15px + env(safe-area-inset-top));
             display: grid; grid-template-columns: 1fr 2fr; gap: 10px;
             border-bottom: 1px solid #222;
+            flex-shrink: 0;
         }
         .display-box { background: #000; border: 1px solid #222; padding: 10px; border-radius: 4px; min-height: 55px; }
         .label { font-size: 0.6rem; color: #555; margin-bottom: 4px; text-transform: uppercase; }
@@ -49,15 +60,18 @@
 
         /* 2. チャート表示セクション */
         #chart-viewport {
-            flex: 1; width: 100%; display: flex; justify-content: center; align-items: center; 
-            overflow: auto; /* はみ出した場合にスクロール可能に */
+            flex: 1; width: 100%; min-height: 0; display: flex; justify-content: center; align-items: center; 
+            overflow: hidden; /* スクロールさせない（チャートは JS で画面に収まるよう縮小する） */
+            touch-action: none; /* タッチでのパン/ズームを禁止 */
             background: radial-gradient(circle, #080808 0%, #000 100%);
         }
         #chart { 
             position: relative; 
             width: 450px; /* ユニットサイズに基づき調整 */
             height: 350px; 
-            /* iPhoneの画面サイズに合わせて自動スケーリングさせたい場合はここを調整 */
+            flex-shrink: 0;
+            transform-origin: center center;
+            transform: scale(var(--chart-scale, 1)); /* 画面サイズに合わせて JS が --chart-scale を設定 */
         }
 
         svg { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 1; }
@@ -78,6 +92,7 @@
             width: 100%; padding: 20px; background: var(--panel-bg);
             border-top: 1px solid #222; display: flex; justify-content: space-between; align-items: center;
             padding-bottom: calc(20px + env(safe-area-inset-bottom));
+            flex-shrink: 0;
         }
         .param-group { display: flex; flex-direction: column; gap: 10px; }
         .param { display: flex; align-items: center; gap: 12px; font-size: 0.7rem; color: #888; }
@@ -209,6 +224,28 @@
             svg.appendChild(path);
         }
     }
+
+    // 4.5 チャートを表示領域に収まるよう縮小（iPhone などの小さい画面向け）
+    const chartEl = document.getElementById('chart');
+    const viewportEl = document.getElementById('chart-viewport');
+    function fitChart() {
+        const pad = 10;
+        const sx = (viewportEl.clientWidth - pad) / 450;
+        const sy = (viewportEl.clientHeight - pad) / 350;
+        const scale = Math.max(0.1, Math.min(1, sx, sy));
+        chartEl.style.setProperty('--chart-scale', scale);
+        // 縮小後の見た目サイズにレイアウト上の箱も合わせる（余分なスクロール領域を作らない）
+        chartEl.style.margin = `${-350 * (1 - scale) / 2}px ${-450 * (1 - scale) / 2}px`;
+    }
+    fitChart();
+    window.addEventListener('resize', fitChart);
+    window.addEventListener('orientationchange', fitChart);
+    if (window.visualViewport) window.visualViewport.addEventListener('resize', fitChart);
+
+    // ページ全体のスクロール/バウンスを抑止（ボタンやスライダー以外のタッチ移動を無効化）
+    document.addEventListener('touchmove', (e) => {
+        if (!e.target.closest('input[type=range]')) e.preventDefault();
+    }, { passive: false });
 
     // 5. ロジック本体
     let start, timer, code = "";
