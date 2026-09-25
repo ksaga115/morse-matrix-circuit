@@ -5,7 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="mobile-web-app-capable" content="yes">
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <!-- black-translucent にするとホーム画面起動時にタッチ判定がステータスバー分ずれる iOS の既知バグがあるため black を使う -->
+    <meta name="apple-mobile-web-app-status-bar-style" content="black">
     <meta name="theme-color" content="#050505">
     <title>Morse Matrix Circuit v2</title>
     <style>
@@ -39,9 +40,11 @@
         body { 
             background: var(--bg); color: #adbac7; font-family: 'Consolas', 'Courier New', monospace; 
             margin: 0; display: flex; flex-direction: column; align-items: center; overflow: hidden;
-            /* iOS Safari の URL バー/ツールバー分を除いた実際の表示領域に合わせる */
+            /* iOS Safari の URL バー/ツールバー分を除いた実際の表示領域に合わせる。
+               height を指定せず top/bottom の固定だけにすることで、Safari でもホーム画面起動時でも
+               レイアウトと実際の画面サイズが必ず一致する（ズレによるタッチ判定の食い違いを防ぐ） */
             position: fixed; top: 0; left: 0; right: 0; bottom: 0;
-            width: 100%; height: 100vh; height: 100dvh;
+            width: 100%;
             overscroll-behavior: none;
         }
 
@@ -229,6 +232,12 @@
         if (e.touches.length > 1) e.preventDefault();
     }, { passive: false });
     document.addEventListener('gesturestart', (e) => e.preventDefault());
+    // 万一ページがずれてしまった場合に備え、常に先頭位置へ戻す（ホーム画面起動時のタッチ判定ずれ対策）
+    const resetScroll = () => { if (window.scrollX || window.scrollY) window.scrollTo(0, 0); };
+    window.addEventListener('scroll', resetScroll, { passive: true });
+    window.addEventListener('resize', resetScroll);
+    window.addEventListener('orientationchange', () => setTimeout(resetScroll, 100));
+    window.addEventListener('pageshow', resetScroll);
 
     // 5. ロジック本体
     let start, timer, code = "";
