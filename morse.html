@@ -60,32 +60,28 @@
 
         /* 2. チャート表示セクション */
         #chart-viewport {
-            flex: 1; width: 100%; min-height: 0; display: flex; justify-content: center; align-items: center; 
-            overflow: hidden; /* スクロールさせない（チャートは JS で画面に収まるよう縮小する） */
+            flex: 1; width: 100%; min-height: 0; position: relative;
+            overflow: hidden; /* スクロールさせない */
             touch-action: none; /* タッチでのパン/ズームを禁止 */
             background: radial-gradient(circle, #080808 0%, #000 100%);
         }
-        #chart { 
-            position: relative; 
-            width: 450px; /* ユニットサイズに基づき調整 */
-            height: 350px; 
-            flex-shrink: 0;
-            transform-origin: center center;
-            transform: scale(var(--chart-scale, 1)); /* 画面サイズに合わせて JS が --chart-scale を設定 */
+        /* チャート全体を 1 枚の SVG として描画し、viewBox で表示領域にぴったり収める
+           （固定サイズの要素が存在しないので、はみ出し = スクロールが発生しない） */
+        #chart {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            display: block; overflow: hidden; pointer-events: none;
         }
+        #chart path { fill: none; stroke: var(--line-dim); stroke-width: 1.5; transition: stroke 0.2s; }
+        #chart path.active-dot { stroke: var(--dot-color); stroke-width: 3; filter: drop-shadow(0 0 4px var(--dot-color)); }
+        #chart path.active-dash { stroke: var(--dash-color); stroke-width: 3; filter: drop-shadow(0 0 4px var(--dash-color)); }
 
-        svg { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 1; }
-        path { fill: none; stroke: var(--line-dim); stroke-width: 1.5; transition: stroke 0.2s; }
-        path.active-dot { stroke: var(--dot-color); stroke-width: 3; filter: drop-shadow(0 0 4px var(--dot-color)); }
-        path.active-dash { stroke: var(--dash-color); stroke-width: 3; filter: drop-shadow(0 0 4px var(--dash-color)); }
-
-        .node {
-            position: absolute; width: 20px; height: 20px; border: 1px solid var(--gold);
-            display: flex; align-items: center; justify-content: center;
-            font-size: 0.7rem; font-weight: bold; background: #000; color: var(--gold);
-            transition: 0.2s; transform: translate(-50%, -50%); z-index: 10;
+        .node rect { fill: #000; stroke: var(--gold); stroke-width: 1; transition: 0.2s; }
+        .node text {
+            fill: var(--gold); font-size: 11px; font-weight: bold; font-family: inherit;
+            text-anchor: middle; dominant-baseline: central; transition: 0.2s;
         }
-        .node.active { background: var(--active); color: #000; box-shadow: 0 0 12px var(--active); border-color: #fff; }
+        .node.active rect { fill: var(--active); stroke: #fff; filter: drop-shadow(0 0 8px var(--active)); }
+        .node.active text { fill: #000; }
 
         /* 3. コントロールセクション */
         .controls {
@@ -129,38 +125,10 @@
 </div>
 
 <div id="chart-viewport">
-    <div id="chart">
-        <svg id="lines"></svg>
-        <div class="node active" id="n-start" data-x="3" data-y="0">S</div>
-        
-        <div class="node" id="n-o" data-x="0" data-y="-1">O</div>
-        <div class="node" id="n-m" data-x="1" data-y="-1">M</div>
-        <div class="node" id="n-t" data-x="2" data-y="-1">T</div>
-        <div class="node" id="n-q" data-x="0" data-y="-2">Q</div>
-        <div class="node" id="n-g" data-x="1" data-y="-2">G</div>
-        <div class="node" id="n-z" data-x="1" data-y="-3">Z</div>
-        <div class="node" id="n-y" data-x="0" data-y="-4">Y</div>
-        <div class="node" id="n-k" data-x="1" data-y="-4">K</div>
-        <div class="node" id="n-n" data-x="2" data-y="-4">N</div>
-        <div class="node" id="n-c" data-x="1" data-y="-5">C</div>
-        <div class="node" id="n-x" data-x="1" data-y="-6">X</div>
-        <div class="node" id="n-d" data-x="2" data-y="-6">D</div>
-        <div class="node" id="n-b" data-x="2" data-y="-7">B</div>
-
-        <div class="node" id="n-e" data-x="4" data-y="-1">E</div>
-        <div class="node" id="n-i" data-x="5" data-y="-1">I</div>
-        <div class="node" id="n-s" data-x="7" data-y="-1">S</div>
-        <div class="node" id="n-h" data-x="8" data-y="-1">H</div>
-        <div class="node" id="n-u" data-x="5" data-y="-2">U</div>
-        <div class="node" id="n-f" data-x="6" data-y="-2">F</div>
-        <div class="node" id="n-v" data-x="7" data-y="-2">V</div>
-        <div class="node" id="n-a" data-x="4" data-y="-4">A</div>
-        <div class="node" id="n-r" data-x="5" data-y="-4">R</div>
-        <div class="node" id="n-l" data-x="7" data-y="-4">L</div>
-        <div class="node" id="n-w" data-x="4" data-y="-6">W</div>
-        <div class="node" id="n-p" data-x="5" data-y="-6">P</div>
-        <div class="node" id="n-j" data-x="4" data-y="-7">J</div>
-    </div>
+    <svg id="chart" viewBox="0 0 450 350" preserveAspectRatio="xMidYMid meet" xmlns="http://www.w3.org/2000/svg">
+        <g id="lines"></g>
+        <g id="nodes"></g>
+    </svg>
 </div>
 
 <div class="controls">
@@ -196,28 +164,55 @@
         "G": {"・":"Z", "ー":"Q"}, "K": {"・":"C", "ー":"Y"}
     };
 
-    const nodes = document.querySelectorAll('.node');
+    // ノード配置（グリッド座標）
+    const nodeDefs = {
+        start: {x:3, y:0, label:"S"},
+        o: {x:0, y:-1, label:"O"}, m: {x:1, y:-1, label:"M"}, t: {x:2, y:-1, label:"T"},
+        q: {x:0, y:-2, label:"Q"}, g: {x:1, y:-2, label:"G"}, z: {x:1, y:-3, label:"Z"},
+        y: {x:0, y:-4, label:"Y"}, k: {x:1, y:-4, label:"K"}, n: {x:2, y:-4, label:"N"},
+        c: {x:1, y:-5, label:"C"}, x: {x:1, y:-6, label:"X"}, d: {x:2, y:-6, label:"D"}, b: {x:2, y:-7, label:"B"},
+        e: {x:4, y:-1, label:"E"}, i: {x:5, y:-1, label:"I"}, s: {x:7, y:-1, label:"S"}, h: {x:8, y:-1, label:"H"},
+        u: {x:5, y:-2, label:"U"}, f: {x:6, y:-2, label:"F"}, v: {x:7, y:-2, label:"V"},
+        a: {x:4, y:-4, label:"A"}, r: {x:5, y:-4, label:"R"}, l: {x:7, y:-4, label:"L"},
+        w: {x:4, y:-6, label:"W"}, p: {x:5, y:-6, label:"P"}, j: {x:4, y:-7, label:"J"}
+    };
+
+    const SVG_NS = "http://www.w3.org/2000/svg";
     const svg = document.getElementById('lines');
-    const uw = 45, uh = 38, ox = 40, oy = 45;
+    const nodesLayer = document.getElementById('nodes');
+    const uw = 45, uh = 38, ox = 40, oy = 45, nodeSize = 20;
 
     // 3. 座標計算とノード配置
     function getPos(id) {
-        const el = document.getElementById(`n-${id.toLowerCase()}`);
-        return el ? { x: parseInt(el.dataset.x) * uw + ox, y: Math.abs(parseInt(el.dataset.y)) * uh + oy } : {x:0, y:0};
+        const d = nodeDefs[id.toLowerCase()];
+        return d ? { x: d.x * uw + ox, y: Math.abs(d.y) * uh + oy } : {x:0, y:0};
     }
 
-    nodes.forEach(n => {
-        const p = getPos(n.id.replace('n-',''));
-        n.style.left = p.x + "px";
-        n.style.top = p.y + "px";
-    });
+    for (let id in nodeDefs) {
+        const p = getPos(id);
+        const g = document.createElementNS(SVG_NS, "g");
+        g.setAttribute("class", "node" + (id === "start" ? " active" : ""));
+        g.id = `n-${id}`;
+        const rect = document.createElementNS(SVG_NS, "rect");
+        rect.setAttribute("x", p.x - nodeSize / 2);
+        rect.setAttribute("y", p.y - nodeSize / 2);
+        rect.setAttribute("width", nodeSize);
+        rect.setAttribute("height", nodeSize);
+        const text = document.createElementNS(SVG_NS, "text");
+        text.setAttribute("x", p.x);
+        text.setAttribute("y", p.y);
+        text.textContent = nodeDefs[id].label;
+        g.appendChild(rect);
+        g.appendChild(text);
+        nodesLayer.appendChild(g);
+    }
 
     // 4. SVG配線の初期描画
     for (let from in tree) {
         for (let sym in tree[from]) {
             const to = tree[from][sym];
             const p1 = getPos(from), p2 = getPos(to);
-            const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+            const path = document.createElementNS(SVG_NS, "path");
             // クランク（カクカク）状に配線
             path.setAttribute("d", `M ${p1.x} ${p1.y} V ${(p1.y + p2.y) / 2} H ${p2.x} V ${p2.y}`);
             path.id = `line-${from}-${to}`;
@@ -225,27 +220,15 @@
         }
     }
 
-    // 4.5 チャートを表示領域に収まるよう縮小（iPhone などの小さい画面向け）
-    const chartEl = document.getElementById('chart');
-    const viewportEl = document.getElementById('chart-viewport');
-    function fitChart() {
-        const pad = 10;
-        const sx = (viewportEl.clientWidth - pad) / 450;
-        const sy = (viewportEl.clientHeight - pad) / 350;
-        const scale = Math.max(0.1, Math.min(1, sx, sy));
-        chartEl.style.setProperty('--chart-scale', scale);
-        // 縮小後の見た目サイズにレイアウト上の箱も合わせる（余分なスクロール領域を作らない）
-        chartEl.style.margin = `${-350 * (1 - scale) / 2}px ${-450 * (1 - scale) / 2}px`;
-    }
-    fitChart();
-    window.addEventListener('resize', fitChart);
-    window.addEventListener('orientationchange', fitChart);
-    if (window.visualViewport) window.visualViewport.addEventListener('resize', fitChart);
-
-    // ページ全体のスクロール/バウンスを抑止（ボタンやスライダー以外のタッチ移動を無効化）
+    // ページ全体のスクロール/バウンスを抑止（スライダー以外のタッチ移動を無効化）
     document.addEventListener('touchmove', (e) => {
         if (!e.target.closest('input[type=range]')) e.preventDefault();
     }, { passive: false });
+    // iOS Safari のピンチズームを抑止（ズームするとページがスクロール可能になってしまうため）
+    document.addEventListener('touchstart', (e) => {
+        if (e.touches.length > 1) e.preventDefault();
+    }, { passive: false });
+    document.addEventListener('gesturestart', (e) => e.preventDefault());
 
     // 5. ロジック本体
     let start, timer, code = "";
