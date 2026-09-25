@@ -1,1 +1,56 @@
 # morse-matrix-circuit
+
+ボタンのタップ長でモールス信号を入力し、アルファベットにデコードするシングルページの Web アプリです。
+入力中は、モールス符号の遷移ツリー（回路図風のチャート）上で現在のたどっている経路が光ります。
+
+## ファイルを開く
+
+- **ブラウザで直接開く（推奨）**
+  https://htmlpreview.github.io/?https://github.com/ksaga115/morse-matrix-circuit/blob/main/morse.html
+- **GitHub Pages を有効にしている場合**
+  https://ksaga115.github.io/morse-matrix-circuit/morse.html
+  （リポジトリの Settings → Pages で Branch を `main` / `(root)` に設定すると公開されます）
+- **ソースを見る**
+  https://github.com/ksaga115/morse-matrix-circuit/blob/main/morse.html
+- **ダウンロードしてローカルで開く**
+  https://raw.githubusercontent.com/ksaga115/morse-matrix-circuit/main/morse.html
+  を保存して、ブラウザで `morse.html` を開くだけで動作します（外部ライブラリ不要）。
+
+スマートフォン（iPhone のタッチ操作）と PC（マウス操作）の両方に対応しています。
+
+## 使い方
+
+1. 画面右下の **SIGNAL** ボタンを押します。
+   - 短く押す → **・（トン）**
+   - 長く押す → **ー（ツー）**
+2. 押すたびに上部の **Incoming Code** に現在の符号が表示され、チャート上の対応するノードと配線が点灯します。
+   - 青い線 = ・、赤い線 = ー
+3. 一定時間ボタンを押さないと、その符号が 1 文字として確定し、**Decoded Message** に追加されます。
+4. **SYSTEM RESET** を押すと、入力中の符号とデコード済みメッセージをすべて消去します。
+
+### 設定スライダー
+
+| 項目 | 初期値 | 説明 |
+| --- | --- | --- |
+| DASH-TH | 200ms | 押した長さがこの値未満なら「・」、以上なら「ー」と判定します（100〜400ms） |
+| WAIT-TH | 800ms | 最後のタップからこの時間が経過すると 1 文字として確定します（400〜1500ms） |
+
+### 対応文字
+
+アルファベット A〜Z の 26 文字に対応しています。
+
+| 文字 | 符号 | 文字 | 符号 | 文字 | 符号 |
+| --- | --- | --- | --- | --- | --- |
+| A | ・ー | J | ・ーーー | S | ・・・ |
+| B | ー・・・ | K | ー・ー | T | ー |
+| C | ー・ー・ | L | ・ー・・ | U | ・・ー |
+| D | ー・・ | M | ーー | V | ・・・ー |
+| E | ・ | N | ー・ | W | ・ーー |
+| F | ・・ー・ | O | ーーー | X | ー・・ー |
+| G | ーー・ | P | ・ーー・ | Y | ー・ーー |
+| H | ・・・・ | Q | ーー・ー | Z | ーー・・ |
+| I | ・・ | R | ・ー・ | | |
+
+## ファイル構成
+
+- `morse.html` — アプリ本体（HTML / CSS / JavaScript を 1 ファイルにまとめています）
