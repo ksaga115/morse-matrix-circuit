@@ -108,7 +108,8 @@
             box-shadow: 0 4px 10px rgba(0,0,0,0.5);
             flex-shrink: 0; /* 狭い画面でも円形を保つ */
         }
-        #tap-btn:active { background: #333; transform: scale(0.94); box-shadow: none; }
+        #tap-btn:active, #tap-btn.pressed { background: #333; transform: scale(0.94); box-shadow: none; }
+        #v-timing { font-size: 0.6rem; color: #666; }
         
         .reset-btn { 
             background: #2a0000; color: #ff6666; border: 1px solid #552222; 
@@ -286,15 +287,11 @@
 <div class="controls">
     <div class="param-group">
         <div class="param">
-            <span>DASH-TH</span>
-            <input type="range" id="dash-thresh" min="100" max="1000" step="10" value="200">
-            <span id="v-dash">200ms</span>
+            <span>SPEED</span>
+            <input type="range" id="wpm" min="5" max="30" step="1" value="15">
+            <span id="v-wpm">15WPM</span>
         </div>
-        <div class="param">
-            <span>WAIT-TH</span>
-            <input type="range" id="wait-thresh" min="100" max="1000" step="10" value="800">
-            <span id="v-wait">800ms</span>
-        </div>
+        <div class="param"><span id="v-timing"></span></div>
         <div class="reset-btn" onclick="fullReset()">SYSTEM RESET</div>
     </div>
     <button id="tap-btn">SIGNAL</button>
@@ -452,8 +449,12 @@
     const btn = document.getElementById('tap-btn');
     const msgEl = document.getElementById('message-box');
     const monitorEl = document.getElementById('code-monitor');
-    const dashTh = () => Number(document.getElementById('dash-thresh').value);
-    const waitTh = () => Number(document.getElementById('wait-thresh').value);
+    // 速さは標準のモールスの決まりどおり 1 単位（ms）= 1200 / WPM（PARIS 方式）。
+    // ・ = 1、ー = 3、符号の間 = 1、文字の間 = 3、単語の間 = 7 単位。
+    // 受け取る側の境目はそれぞれの真ん中: ・/ー は 2 単位、文字の確定は 2 単位、単語の区切りは 5 単位の間
+    const wpmEl = document.getElementById('wpm');
+    const unit = () => 1200 / Number(wpmEl.value);
+    const dashTh = () => unit() * 2;
 
     function update() {
         // すべてのリセット
@@ -469,11 +470,11 @@
 
     // ・ と ー の境目。AUTO のときは直近の長さを「短い組」と「長い組」に分け、その真ん中（対数で）を境目にする。
     // 打つ人の癖や、部屋の反響で音の尻尾が伸びる分に自動で合わせるため。2 組がはっきり分かれる（1.8 倍以上）まではスライダーの値を使う。
-    // 雑音で一瞬だけ反応した打ちに引きずられないよう、60ms 未満は学ばず、どちらの組も 2 打以上あるときだけ採用する
+    // 雑音で一瞬だけ反応した打ちに引きずられないよう、0.4 単位未満は学ばず、どちらの組も 2 打以上あるときだけ採用する
     const durEl = document.getElementById('dur-monitor');
     let autoOn = true, autoTh = null, recentDur = [], curDurs = [];
     function learnDur(dur) {
-        if (dur < 60) return;
+        if (dur < Math.max(25, unit() * 0.4)) return;
         recentDur.push(dur);
         if (recentDur.length > 16) recentDur.shift();
         const L = recentDur.map(d => Math.log(Math.max(d, 1))).sort((a, b) => a - b);
@@ -487,6 +488,10 @@
         if (best && Math.exp(best.mb - best.ma) >= 1.8) autoTh = Math.exp((best.ma + best.mb) / 2);
     }
     function dotDashTh() { return autoOn && autoTh ? autoTh : dashTh(); }
+    // 間の判定に使う 1 単位。AUTO で相手が設定より遅いとわかったら、その遅さに合わせる（文字が途中で切れないように）
+    function gapUnit() { return autoOn && autoTh ? Math.max(unit(), autoTh / 2) : unit(); }
+    const letterTh = () => gapUnit() * 2;
+    const wordTh = () => gapUnit() * 5;
     function resetAuto() { autoTh = null; recentDur = []; }
     function showDurs() {
         durEl.textContent = curDurs.map(([s, d]) => s + d).join(' ') + (curDurs.length ? '  ' : '') +
@@ -519,7 +524,7 @@
         if (msgEl.textContent && !msgEl.textContent.endsWith(' ')) msgEl.textContent += ' ';
     }
 
-    // WAIT-TH だけ間が空いたら 1 文字確定、さらに WAIT-TH 空いたら単語の区切り（空白）。
+    // 2 単位の間が空いたら 1 文字確定、5 単位空いたら単語の区切り（空白）。
     // タイマーが遅れて鳴ると次の文字とくっついてしまうので、次の音が来た時点でも
     // 「前の音からの間」を音の時刻で測って確定し直す（タイマーは画面を早く更新するためのもの）。
     let lastUp = null;
@@ -527,8 +532,8 @@
         clearTimeout(timer);
         if (lastUp !== null) {
             const gap = t - lastUp;
-            if (gap >= waitTh()) commitLetter();
-            if (gap >= waitTh() * 2) addSpace();
+            if (gap >= letterTh()) commitLetter();
+            if (gap >= wordTh()) addSpace();
         }
         start = t;
     }
@@ -549,8 +554,8 @@
 
         timer = setTimeout(() => {
             commitLetter();
-            timer = setTimeout(addSpace, waitTh());
-        }, waitTh());
+            timer = setTimeout(addSpace, wordTh() - letterTh());
+        }, letterTh());
     }
 
     // イベント処理（iPhoneのマルチタッチやマウス両対応）
@@ -573,6 +578,31 @@
     btn.addEventListener('touchcancel', handleEnd);
     btn.addEventListener('mousedown', handleStart);
     btn.addEventListener('mouseup', handleEnd);
+
+    // PC ではスペースキーでも打てる。ボタンにフォーカスがあると Space で「クリック」されてしまうので、先に横取りする
+    let spaceDown = false;
+    document.addEventListener('keydown', (e) => {
+        if (e.code !== 'Space' || e.target.closest('input[type=text]')) return;
+        e.preventDefault();
+        if (e.repeat || spaceDown) return;
+        spaceDown = true;
+        btn.classList.add('pressed');
+        handleStart(e);
+    }, true);
+    document.addEventListener('keyup', (e) => {
+        if (e.code !== 'Space' || !spaceDown) return;
+        e.preventDefault();
+        spaceDown = false;
+        btn.classList.remove('pressed');
+        handleEnd(e);
+    }, true);
+    // 押したままウィンドウを離れたら離したことにする（鳴りっぱなし防止）
+    window.addEventListener('blur', () => {
+        if (!spaceDown) return;
+        spaceDown = false;
+        btn.classList.remove('pressed');
+        handleEnd(new Event('blur'));
+    });
 
     // 5. 無線（超音波）
     // 送信: ボタンを押している間だけ高い音を鳴らす。受信: マイクでその周波数だけを見張る。
@@ -780,7 +810,7 @@
 
     // 6. 文章の自動送信
     // 打った文章を符号に直し、SIGNAL を押すのと同じ長さで鳴らす。長さは受け手の判定に合わせて
-    // DASH-TH / WAIT-TH から決めるので、2 台のスライダーを同じにしておけば読み取れる。
+    // 標準の比（1 / 3 / 1 / 3 / 7 単位）で打つ。2 台の SPEED が多少ずれていても読み取れる。
     let sending = false, sendTimers = [];
     const sendInput = document.getElementById('send-text');
     const sendBtn = document.getElementById('send-btn');
@@ -815,10 +845,8 @@
             setStatus(skipped.length ? '送れる文字がありません（' + (alpha === 'ja' ? '和文はカナ・数字' : '欧文は英字・数字') + 'だけ）' : '', !!skipped.length);
             return;
         }
-        // 受け手の判定に余裕を持って収まる長さ: ・ は DASH-TH の半分、ー は 1.75 倍、
-        // 文字の間は WAIT-TH の 1.4 倍（確定はするが空白にはならない）、単語の間は 2.5 倍
-        const D = dashTh(), W = waitTh();
-        const dot = D * 0.5, dash = D * 1.75, gap = Math.min(dot, W * 0.5), letterGap = W * 1.4, wordGap = W * 2.5;
+        const u = unit();
+        const dot = u, dash = u * 3, gap = u, letterGap = u * 3, wordGap = u * 7;
         const events = [];   // [開始ms, 長さms, 何文字目]
         let t = 0;
         out.forEach((o, idx) => {
@@ -918,14 +946,20 @@
     }
 
     // 設定スライダー
-    document.getElementById('dash-thresh').oninput = function() { document.getElementById('v-dash').innerText = this.value + "ms"; showDurs(); };
+    function showSpeed() {
+        const u = unit();
+        document.getElementById('v-wpm').innerText = wpmEl.value + "WPM";
+        document.getElementById('v-timing').innerText = '・' + Math.round(u) + ' ー' + Math.round(u * 3) + ' 字間' + Math.round(u * 3) + ' 語間' + Math.round(u * 7) + 'ms';
+        showDurs();
+    }
+    wpmEl.oninput = showSpeed;
+    showSpeed();
     document.getElementById('auto-btn').addEventListener('click', function() {
         autoOn = !autoOn;
         this.classList.toggle('on', autoOn);
         showDurs();
     });
     showDurs();
-    document.getElementById('wait-thresh').oninput = function() { document.getElementById('v-wait').innerText = this.value + "ms"; };
     freqEl.oninput = function() {
         document.getElementById('v-freq').innerText = (this.value / 1000).toFixed(1) + "kHz";
         if (osc) osc.frequency.setValueAtTime(Number(this.value), actx.currentTime);
