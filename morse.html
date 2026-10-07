@@ -258,7 +258,7 @@
     <button id="auto-btn" class="on" title="・とーの境目を、受け取った長さから自動で決める">長短 AUTO</button>
     <div class="param">
         <span>FREQ</span>
-        <input type="range" id="freq" min="15000" max="20000" step="100" value="18500">
+        <input type="range" id="freq" min="15000" max="23000" step="100" value="18500">
         <span id="v-freq">18.5kHz</span>
     </div>
     <div class="param rx-only">
@@ -288,8 +288,8 @@
     <div class="param-group">
         <div class="param">
             <span>SPEED</span>
-            <input type="range" id="wpm" min="5" max="30" step="1" value="15">
-            <span id="v-wpm">15WPM</span>
+            <input type="range" id="wpm" min="5" max="30" step="1" value="8">
+            <span id="v-wpm">8WPM</span>
         </div>
         <div class="param"><span id="v-timing"></span></div>
         <div class="reset-btn" onclick="fullReset()">SYSTEM RESET</div>
@@ -606,8 +606,26 @@
 
     // 5. 無線（超音波）
     // 送信: ボタンを押している間だけ高い音を鳴らす。受信: マイクでその周波数だけを見張る。
-    // 音の立ち上がり/立ち下がりを急にすると「プチッ」という聞こえる雑音が出るので、RAMP 秒かけて増減する。
-    const RAMP = 0.012;
+    // 音の立ち上がり/立ち下がりを急にすると「プチッ」という聞こえる雑音（低い音を含む）が出るので、
+    // 音量を二乗余弦の曲線でなめらかに増減する。直線で増減すると折れ目から雑音が漏れる。
+    // 長さは 20ms まで。速いときは 1 単位の 1/4 に縮める（・ が増減だけで終わらないように）
+    const rampSec = () => Math.min(0.02, unit() / 1000 * 0.25);
+    function rampCurve(from, to) {
+        const c = new Float32Array(32);
+        for (let i = 0; i < c.length; i++) c[i] = from + (to - from) * (0.5 - 0.5 * Math.cos(Math.PI * i / (c.length - 1)));
+        return c;
+    }
+    // 今の音量から to へなめらかに移る（途中の増減があれば、その時点の音量で止めてから）
+    function glideTo(to) {
+        const g = gain.gain, t = actx.currentTime, r = rampSec();
+        try {
+            if (g.cancelAndHoldAtTime) g.cancelAndHoldAtTime(t); else { g.cancelScheduledValues(t); g.setValueAtTime(g.value, t); }
+            g.setValueCurveAtTime(rampCurve(g.value, to), t + 0.002, r);
+        } catch (e) {
+            // 曲線を予約できない環境では直線で
+            try { g.cancelScheduledValues(t); g.setValueAtTime(g.value, t); g.linearRampToValueAtTime(to, t + r); } catch (e2) {}
+        }
+    }
     let mode = 'local', actx = null, osc = null, gain = null;
     let micStream = null;
     const statusEl = document.getElementById('radio-status');
@@ -620,27 +638,31 @@
     }
 
     function audioCtx() {
-        if (!actx) actx = new (window.AudioContext || window.webkitAudioContext)();
+        if (!actx) {
+            actx = new (window.AudioContext || window.webkitAudioContext)();
+            // 作れる音の上限はサンプリング周波数の半分。それを超えると低い音に化けて聞こえてしまうので、1kHz の余裕を残して制限する
+            const lim = Math.floor((actx.sampleRate / 2 - 1000) / 100) * 100;
+            if (Number(freqEl.max) > lim) {
+                freqEl.max = lim;
+                if (Number(freqEl.value) > lim) { freqEl.value = lim; freqEl.dispatchEvent(new Event('input')); }
+            }
+        }
         if (actx.state === 'suspended') actx.resume();
         return actx;
     }
+    const freqLimitNote = () => '（この端末は ' + (freqEl.max / 1000).toFixed(1) + 'kHz まで）';
 
     function toneOn() {
         if (!gain) return;
         const t = actx.currentTime;
         osc.frequency.setValueAtTime(Number(freqEl.value), t);
-        gain.gain.cancelScheduledValues(t);
-        gain.gain.setValueAtTime(gain.gain.value, t);
-        gain.gain.linearRampToValueAtTime(1, t + RAMP);
+        glideTo(1);
         document.body.classList.add('tone-on');
     }
 
     function toneOff() {
         if (!gain) return;
-        const t = actx.currentTime;
-        gain.gain.cancelScheduledValues(t);
-        gain.gain.setValueAtTime(gain.gain.value, t);
-        gain.gain.linearRampToValueAtTime(0, t + RAMP);
+        glideTo(0);
         document.body.classList.remove('tone-on');
     }
 
@@ -655,7 +677,7 @@
         gain.gain.value = 0;
         osc.connect(gain).connect(ctx.destination);
         osc.start();
-        setStatus('送信中: SIGNAL を押している間だけ ' + (freqEl.value / 1000).toFixed(1) + 'kHz を出します。音量は最大に');
+        setStatus('送信中: SIGNAL を押している間だけ ' + (freqEl.value / 1000).toFixed(1) + 'kHz を出します。音量は最大に' + freqLimitNote());
     }
 
     function stopTx() {
@@ -690,7 +712,7 @@
             setStatus('受信の準備に失敗しました: ' + e.message, true);
             return false;
         }
-        setStatus('受信中: ' + (freqEl.value / 1000).toFixed(1) + 'kHz を聞いています（マイク ' + Math.round(ctx.sampleRate / 1000) + 'kHz）');
+        setStatus('受信中: ' + (freqEl.value / 1000).toFixed(1) + 'kHz を聞いています' + freqLimitNote());
         return true;
     }
 
@@ -870,12 +892,11 @@
             const g = gain.gain;
             g.cancelScheduledValues(actx.currentTime);
             g.setValueAtTime(0, actx.currentTime);
+            const r = rampSec(), up = rampCurve(0, 1), down = rampCurve(1, 0);
             for (const [s, len] of events) {
                 const ts = a0 + s / 1000, te = ts + len / 1000;
-                g.setValueAtTime(0, ts);
-                g.linearRampToValueAtTime(1, ts + RAMP);
-                g.setValueAtTime(1, te - RAMP);
-                g.linearRampToValueAtTime(0, te);
+                g.setValueCurveAtTime(up, ts, r);
+                g.setValueCurveAtTime(down, te - r, r);
             }
         }
         // 画面（回路図と本文）は手で打ったときと同じ処理で動かす
@@ -905,7 +926,7 @@
     function stopSend() {
         if (!sending) return;
         sendTimers.forEach(clearTimeout);
-        if (gain) { gain.gain.cancelScheduledValues(actx.currentTime); gain.gain.setValueAtTime(0, actx.currentTime); }
+        if (gain) glideTo(0);
         if (start !== null) keyUp(performance.now());
         finishSend();
         setStatus('送信を止めました');
