@@ -59,6 +59,7 @@
         .display-box { background: #000; border: 1px solid #222; padding: 10px; border-radius: 4px; min-height: 55px; }
         .label { font-size: 0.6rem; color: #555; margin-bottom: 4px; text-transform: uppercase; }
         #code-monitor { font-size: 1.1rem; color: #539bf5; min-height: 1.2em; letter-spacing: 3px; }
+        #dur-monitor { font-size: 0.6rem; color: #666; min-height: 1em; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
         #message-box { font-size: 1.4rem; color: var(--active); min-height: 1.2em; word-break: break-all; white-space: pre-wrap; }
 
         /* 2. チャート表示セクション */
@@ -150,6 +151,11 @@
         body.sending #send-btn { background: #2a0000; color: #ff6666; border-color: #552222; }
         body.mode-rx .send-row { display: none; }
         body.sending #tap-btn { opacity: 0.35; }
+        #auto-btn {
+            background: #000; color: #777; border: 1px solid #333; border-radius: 4px; padding: 6px 10px;
+            font-family: inherit; font-size: 0.7rem; cursor: pointer; -webkit-tap-highlight-color: transparent;
+        }
+        #auto-btn.on { background: var(--gold); color: #000; font-weight: bold; border-color: var(--gold); }
         .rx-only { display: none; }
         body.mode-rx .rx-only { display: flex; }
         body.mode-rx #tap-btn { opacity: 0.35; }
@@ -230,6 +236,7 @@
     <div class="display-box">
         <div class="label">Incoming Code</div>
         <div id="code-monitor"></div>
+        <div id="dur-monitor"></div>
     </div>
     <div class="display-box">
         <div class="label">Decoded Message</div>
@@ -247,6 +254,7 @@
         <button data-alpha="en" class="on">欧文</button>
         <button data-alpha="ja">和文</button>
     </div>
+    <button id="auto-btn" class="on" title="・とーの境目を、受け取った長さから自動で決める">長短 AUTO</button>
     <div class="param">
         <span>FREQ</span>
         <input type="range" id="freq" min="15000" max="20000" step="100" value="18500">
@@ -353,21 +361,34 @@
         return { viewBox: "0 0 450 350", nodes, size: 20, font: 11,
                  wire: (a, b) => `M ${a.x} ${a.y} V ${(a.y + b.y) / 2} H ${b.x} V ${b.y}` };
     }
-    // 和文: 字数が多いので自動で並べる。左から右へ 1 符号ずつ進み、・ は上、ー は下に枝分かれする。
+    // 和文: 字数が多いので自動で並べる。欧文の図と同じく S を真ん中に置き、・ で始まる側は右へ、ー で始まる側は左へ
+    // 1 符号ずつ進む。枝分かれは ・ が上、ー が下。左右に振り分けることで、1 本の木より高さが半分ほどになる。
     function jaChart() {
-        const colW = 62, rowH = 21, ox = 22, oy = 16;
+        const colW = 34, rowH = 25, ox = 14, oy = 14;
         const exists = new Set([""]);
         for (const c in JA_DICT) for (let i = 1; i <= c.length; i++) exists.add(c.slice(0, i));
-        const nodes = {};
-        let row = 0;
-        (function place(p) {
-            const kids = [p + "・", p + "ー"].filter(k => exists.has(k));
-            const y = kids.length ? kids.map(place).reduce((a, b) => a + b) / kids.length : row++;
-            nodes[p] = { x: p.length * colW + ox, y: y * rowH + oy, label: p === "" ? "S" : (JA_DICT[p] || "") };
-            return y;
-        })("");
-        const w = 6 * colW + ox * 2, h = (row - 1) * rowH + oy * 2;
-        return { viewBox: `0 0 ${w} ${h}`, nodes, size: 17, font: 10,
+        const depth = (root) => Math.max(...[...exists].filter(c => c.startsWith(root)).map(c => c.length));
+        const left = depth("ー"), right = depth("・");
+        const cx = ox + left * colW;
+        const nodes = {}, halves = [];
+        for (const [root, dir] of [["・", 1], ["ー", -1]]) {
+            const half = {}; let row = 0;
+            (function place(p) {
+                const kids = [p + "・", p + "ー"].filter(k => exists.has(k));
+                const y = kids.length ? kids.map(place).reduce((a, b) => a + b) / kids.length : row++;
+                half[p] = { x: cx + dir * p.length * colW, y, label: JA_DICT[p] || "" };
+                return y;
+            })(root);
+            halves.push({ half, rows: row, root });
+        }
+        // 行数の少ない側を上下中央にそろえる
+        const rows = Math.max(...halves.map(h => h.rows));
+        for (const { half, rows: r } of halves) {
+            for (const c in half) { half[c].y = (half[c].y + (rows - r) / 2) * rowH + oy; nodes[c] = half[c]; }
+        }
+        nodes[""] = { x: cx, y: (nodes["・"].y + nodes["ー"].y) / 2, label: "S" };
+        const w = (left + right) * colW + ox * 2, h = (rows - 1) * rowH + oy * 2;
+        return { viewBox: `0 0 ${w} ${h}`, nodes, size: 20, font: 11,
                  wire: (a, b) => `M ${a.x} ${a.y} H ${(a.x + b.x) / 2} V ${b.y} H ${b.x}` };
     }
 
@@ -446,6 +467,32 @@
         }
     }
 
+    // ・ と ー の境目。AUTO のときは直近の長さを「短い組」と「長い組」に分け、その真ん中（対数で）を境目にする。
+    // 打つ人の癖や、部屋の反響で音の尻尾が伸びる分に自動で合わせるため。2 組がはっきり分かれる（1.8 倍以上）まではスライダーの値を使う。
+    // 雑音で一瞬だけ反応した打ちに引きずられないよう、60ms 未満は学ばず、どちらの組も 2 打以上あるときだけ採用する
+    const durEl = document.getElementById('dur-monitor');
+    let autoOn = true, autoTh = null, recentDur = [], curDurs = [];
+    function learnDur(dur) {
+        if (dur < 60) return;
+        recentDur.push(dur);
+        if (recentDur.length > 16) recentDur.shift();
+        const L = recentDur.map(d => Math.log(Math.max(d, 1))).sort((a, b) => a - b);
+        const mean = (a) => a.reduce((x, y) => x + y, 0) / a.length;
+        let best = null;
+        for (let k = 2; k <= L.length - 2; k++) {
+            const a = L.slice(0, k), b = L.slice(k), ma = mean(a), mb = mean(b);
+            const cost = a.reduce((x, v) => x + (v - ma) ** 2, 0) + b.reduce((x, v) => x + (v - mb) ** 2, 0);
+            if (!best || cost < best.cost) best = { cost, ma, mb };
+        }
+        if (best && Math.exp(best.mb - best.ma) >= 1.8) autoTh = Math.exp((best.ma + best.mb) / 2);
+    }
+    function dotDashTh() { return autoOn && autoTh ? autoTh : dashTh(); }
+    function resetAuto() { autoTh = null; recentDur = []; }
+    function showDurs() {
+        durEl.textContent = curDurs.map(([s, d]) => s + d).join(' ') + (curDurs.length ? '  ' : '') +
+            '境目 ' + Math.round(dotDashTh()) + 'ms' + (autoOn ? (autoTh ? ' AUTO' : ' AUTO学習中') : '');
+    }
+
     // 受け取った 1 文字を本文に足す。和文の ゛ ゜ は直前のカナとくっつける（カ + ゛ → ガ）
     function appendChar(ch) {
         const text = msgEl.textContent;
@@ -459,8 +506,10 @@
     // 打ち込み中の符号を 1 文字として確定する
     function commitLetter() {
         if (!code) return;
+        if (curDurs.length === code.length) code = curDurs.map(([, d]) => d < dotDashTh() ? "・" : "ー").join("");
         const res = morseDict[code];
         if (res) appendChar(res);
+        curDurs = [];
         code = "";
         monitorEl.textContent = "";
         update();
@@ -490,7 +539,11 @@
         start = null;
         lastUp = t;
 
-        code += (dur < dashTh()) ? "・" : "ー";
+        learnDur(dur);
+        const sym = (dur < dotDashTh()) ? "・" : "ー";
+        code += sym;
+        curDurs.push([sym, Math.round(dur)]);
+        showDurs();
         monitorEl.textContent = code;
         update();
 
@@ -713,6 +766,7 @@
         if (mode === 'rx') stopRx();
         mode = m;
         lastUp = null;
+        resetAuto(); showDurs();
         document.querySelectorAll('.mode-group button').forEach(b => b.classList.toggle('on', b.dataset.mode === m));
         document.body.classList.toggle('mode-rx', m === 'rx');
         setStatus('');
@@ -857,12 +911,20 @@
         monitorEl.textContent = "";
         clearTimeout(timer);
         code = "";
+        curDurs = [];
         lastUp = null;
+        resetAuto(); showDurs();
         update();
     }
 
     // 設定スライダー
-    document.getElementById('dash-thresh').oninput = function() { document.getElementById('v-dash').innerText = this.value + "ms"; };
+    document.getElementById('dash-thresh').oninput = function() { document.getElementById('v-dash').innerText = this.value + "ms"; showDurs(); };
+    document.getElementById('auto-btn').addEventListener('click', function() {
+        autoOn = !autoOn;
+        this.classList.toggle('on', autoOn);
+        showDurs();
+    });
+    showDurs();
     document.getElementById('wait-thresh').oninput = function() { document.getElementById('v-wait').innerText = this.value + "ms"; };
     freqEl.oninput = function() {
         document.getElementById('v-freq').innerText = (this.value / 1000).toFixed(1) + "kHz";
