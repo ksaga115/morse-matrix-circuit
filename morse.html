@@ -59,7 +59,7 @@
         .display-box { background: #000; border: 1px solid #222; padding: 10px; border-radius: 4px; min-height: 55px; }
         .label { font-size: 0.6rem; color: #555; margin-bottom: 4px; text-transform: uppercase; }
         #code-monitor { font-size: 1.1rem; color: #539bf5; min-height: 1.2em; letter-spacing: 3px; }
-        #message-box { font-size: 1.4rem; color: var(--active); min-height: 1.2em; word-break: break-all; }
+        #message-box { font-size: 1.4rem; color: var(--active); min-height: 1.2em; word-break: break-all; white-space: pre-wrap; }
 
         /* 2. チャート表示セクション */
         #chart-viewport {
@@ -85,6 +85,7 @@
         }
         .node.active rect { fill: var(--active); stroke: #fff; filter: drop-shadow(0 0 8px var(--active)); }
         .node.active text { fill: #000; }
+        .node.blank rect { stroke: #333; }
 
         /* 3. コントロールセクション */
         .controls {
@@ -121,13 +122,13 @@
             display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px;
             font-size: 0.7rem; color: #888;
         }
-        .mode-group { display: flex; border: 1px solid #333; border-radius: 4px; overflow: hidden; }
-        .mode-group button {
+        .mode-group, .alpha-group { display: flex; border: 1px solid #333; border-radius: 4px; overflow: hidden; }
+        .mode-group button, .alpha-group button {
             background: #000; color: #777; border: none; padding: 6px 10px; font-family: inherit;
             font-size: 0.7rem; cursor: pointer; -webkit-tap-highlight-color: transparent;
         }
-        .mode-group button + button { border-left: 1px solid #333; }
-        .mode-group button.on { background: var(--gold); color: #000; font-weight: bold; }
+        .mode-group button + button, .alpha-group button + button { border-left: 1px solid #333; }
+        .mode-group button.on, .alpha-group button.on { background: var(--gold); color: #000; font-weight: bold; }
         .radio-bar .param span:first-child { width: auto; }
         .meter { position: relative; width: 90px; height: 8px; background: #000; border: 1px solid #333; border-radius: 2px; }
         .meter-fill { position: absolute; left: 0; top: 0; bottom: 0; width: 0; background: #539bf5; }
@@ -135,6 +136,20 @@
         .meter-th { position: absolute; top: -3px; bottom: -3px; width: 2px; background: var(--dash-color); }
         #radio-status { color: #666; flex-basis: 100%; min-height: 1em; }
         #radio-status.err { color: #ff6666; }
+        .alpha-group { border-color: #333; }
+        .send-row { display: flex; gap: 6px; flex-basis: 100%; }
+        #send-text {
+            flex: 1; min-width: 0; background: #000; color: #adbac7; border: 1px solid #333; border-radius: 4px;
+            padding: 6px 8px; font-family: inherit; font-size: 16px; /* 16px 未満だと iOS がフォーカス時に拡大する */
+            -webkit-user-select: text; user-select: text;
+        }
+        #send-btn {
+            background: #000; color: var(--gold); border: 1px solid var(--gold); border-radius: 4px;
+            padding: 0 12px; font-family: inherit; font-size: 0.75rem; font-weight: bold; cursor: pointer;
+        }
+        body.sending #send-btn { background: #2a0000; color: #ff6666; border-color: #552222; }
+        body.mode-rx .send-row { display: none; }
+        body.sending #tap-btn { opacity: 0.35; }
         .rx-only { display: none; }
         body.mode-rx .rx-only { display: flex; }
         body.mode-rx #tap-btn { opacity: 0.35; }
@@ -156,7 +171,7 @@
         @media (orientation: landscape) and (max-height: 540px) {
             body {
                 display: grid;
-                grid-template-columns: 1fr minmax(230px, 300px);
+                grid-template-columns: 1fr minmax(300px, 400px);
                 grid-template-rows: auto auto 1fr;
                 align-items: stretch;
             }
@@ -166,7 +181,7 @@
             }
             .output-section {
                 grid-column: 2; grid-row: 1;
-                grid-template-columns: 1fr; gap: 8px;
+                grid-template-columns: 1fr 2fr; gap: 8px;
                 padding: 10px; padding-top: calc(10px + env(safe-area-inset-top));
                 padding-right: calc(10px + env(safe-area-inset-right));
                 border-bottom: 1px solid #222; border-left: 1px solid #222;
@@ -180,7 +195,7 @@
             #message-box { font-size: 1.1rem; }
             .controls {
                 grid-column: 2; grid-row: 3;
-                flex-direction: column; justify-content: space-evenly; gap: 8px;
+                flex-direction: row; justify-content: space-between; align-items: center; gap: 8px;
                 padding: 10px; padding-bottom: calc(10px + env(safe-area-inset-bottom));
                 padding-right: calc(10px + env(safe-area-inset-right));
                 border-top: none; border-left: 1px solid #222;
@@ -189,6 +204,7 @@
             .param-group { gap: 6px; }
             .reset-btn { margin-top: 4px; }
             #tap-btn { width: 80px; height: 80px; }
+            #radio-status:empty { display: none; }
         }
 
         /* 6. さらに高さの低い横向き画面（320px 前後）向け: 右列をよりコンパクトに */
@@ -227,6 +243,10 @@
         <button data-mode="tx">TX 送信</button>
         <button data-mode="rx">RX 受信</button>
     </div>
+    <div class="alpha-group">
+        <button data-alpha="en" class="on">欧文</button>
+        <button data-alpha="ja">和文</button>
+    </div>
     <div class="param">
         <span>FREQ</span>
         <input type="range" id="freq" min="15000" max="20000" step="100" value="18500">
@@ -240,6 +260,10 @@
     <div class="param rx-only">
         <span>LEVEL</span>
         <div class="meter" id="meter"><div class="meter-fill" id="meter-fill"></div><div class="meter-th" id="meter-th"></div></div>
+    </div>
+    <div class="send-row">
+        <input type="text" id="send-text" placeholder="A-Z / 0-9（例: HELLO WORLD）" enterkeyhint="send" autocomplete="off">
+        <button id="send-btn">SEND</button>
     </div>
     <div id="radio-status"></div>
 </div>
@@ -269,80 +293,125 @@
 </div>
 
 <script>
-    // 1. 全アルファベット辞書（省略なし）
-    const morseDict = {
+    // 1. 符号表。キーは符号（・ と ー の並び）、値は文字
+    // 欧文: A〜Z と数字・記号
+    const EN_DICT = {
         "・":"E","・・":"I","・・・":"S","・・・・":"H","・ー":"A","・ー・":"R","・ー・・":"L","・・ー":"U","・・ー・":"F","・・・ー":"V","・ーー":"W","・ーー・":"P","・ーーー":"J",
-        "ー":"T","ーー":"M","ーーー":"O","ー・":"N","ー・・":"D","ー・・・":"B","ー・ー":"K","ー・ー・":"C","ー・ーー":"Y","ーー・":"G","ーー・・":"Z","ーー・ー":"Q","ー・・ー":"X"
+        "ー":"T","ーー":"M","ーーー":"O","ー・":"N","ー・・":"D","ー・・・":"B","ー・ー":"K","ー・ー・":"C","ー・ーー":"Y","ーー・":"G","ーー・・":"Z","ーー・ー":"Q","ー・・ー":"X",
+        "・ーーーー":"1","・・ーーー":"2","・・・ーー":"3","・・・・ー":"4","・・・・・":"5",
+        "ー・・・・":"6","ーー・・・":"7","ーーー・・":"8","ーーーー・":"9","ーーーーー":"0",
+        "・ー・ー・ー":".","ーー・・ーー":",","・・ーー・・":"?"
     };
-
-    // 2. 遷移ツリー（省略なし）
-    const tree = {
-        "start": {"・":"E", "ー":"T"},
-        "E": {"・":"I", "ー":"A"}, "I": {"・":"S", "ー":"U"}, "S": {"・":"H", "ー":"V"}, "U": {"・":"F"},
-        "A": {"・":"R", "ー":"W"}, "R": {"・":"L"}, "W": {"・":"P", "ー":"J"},
-        "T": {"・":"N", "ー":"M"}, "N": {"・":"D", "ー":"K"}, "D": {"・":"B", "ー":"X"}, "M": {"・":"G", "ー":"O"},
-        "G": {"・":"Z", "ー":"Q"}, "K": {"・":"C", "ー":"Y"}
+    // 和文: カナ 48 字と濁点・半濁点・長音・句読点。数字は欧文と同じ符号（和文の符号とぶつからない）
+    const JA_DICT = {
+        "・ー":"イ","・ー・ー":"ロ","ー・・・":"ハ","ー・ー・":"ニ","ー・・":"ホ","・":"ヘ","・・ー・・":"ト",
+        "・・ー・":"チ","ーー・":"リ","・・・・":"ヌ","ー・ーー・":"ル","・ーーー":"ヲ",
+        "ー・ー":"ワ","・ー・・":"カ","ーー":"ヨ","ー・":"タ","ーーー":"レ","ーーー・":"ソ",
+        "・ーー・":"ツ","ーー・ー":"ネ","・ー・":"ナ","・・・":"ラ","ー":"ム",
+        "・・ー":"ウ","・ー・・ー":"ヰ","・・ーー":"ノ","・ー・・・":"オ","・・・ー":"ク","・ーー":"ヤ","ー・・ー":"マ",
+        "ー・ーー":"ケ","ーー・・":"フ","ーーーー":"コ","ー・ーーー":"エ","・ー・ーー":"テ",
+        "ーー・ーー":"ア","ー・ー・ー":"サ","ー・ー・・":"キ","ー・・ーー":"ユ","ー・・・ー":"メ","・・ー・ー":"ミ","ーー・ー・":"シ",
+        "・ーー・・":"ヱ","ーー・・ー":"ヒ","ー・・ー・":"モ","・ーーー・":"セ","ーーー・ー":"ス","・ー・ー・":"ン",
+        "・・":"゛","・・ーー・":"゜","・ーー・ー":"ー","・ー・ー・ー":"、","・ー・ー・・":"。",
+        "・ーーーー":"1","・・ーーー":"2","・・・ーー":"3","・・・・ー":"4","・・・・・":"5",
+        "ー・・・・":"6","ーー・・・":"7","ーーー・・":"8","ーーーー・":"9","ーーーーー":"0"
     };
+    const ALPHABETS = { en: EN_DICT, ja: JA_DICT };
+    let alpha = 'en';
+    let morseDict = EN_DICT;
 
-    // ノード配置（グリッド座標）
-    const nodeDefs = {
-        start: {x:3, y:0, label:"S"},
-        o: {x:0, y:-1, label:"O"}, m: {x:1, y:-1, label:"M"}, t: {x:2, y:-1, label:"T"},
-        q: {x:0, y:-2, label:"Q"}, g: {x:1, y:-2, label:"G"}, z: {x:1, y:-3, label:"Z"},
-        y: {x:0, y:-4, label:"Y"}, k: {x:1, y:-4, label:"K"}, n: {x:2, y:-4, label:"N"},
-        c: {x:1, y:-5, label:"C"}, x: {x:1, y:-6, label:"X"}, d: {x:2, y:-6, label:"D"}, b: {x:2, y:-7, label:"B"},
-        e: {x:4, y:-1, label:"E"}, i: {x:5, y:-1, label:"I"}, s: {x:7, y:-1, label:"S"}, h: {x:8, y:-1, label:"H"},
-        u: {x:5, y:-2, label:"U"}, f: {x:6, y:-2, label:"F"}, v: {x:7, y:-2, label:"V"},
-        a: {x:4, y:-4, label:"A"}, r: {x:5, y:-4, label:"R"}, l: {x:7, y:-4, label:"L"},
-        w: {x:4, y:-6, label:"W"}, p: {x:5, y:-6, label:"P"}, j: {x:4, y:-7, label:"J"}
+    // 2. 欧文チャートの配置（手で並べた回路図。文字 → グリッド座標）
+    const EN_LAYOUT = {
+        "":{x:3, y:0, label:"S"},
+        O:{x:0, y:1}, M:{x:1, y:1}, T:{x:2, y:1},
+        Q:{x:0, y:2}, G:{x:1, y:2}, Z:{x:1, y:3},
+        Y:{x:0, y:4}, K:{x:1, y:4}, N:{x:2, y:4},
+        C:{x:1, y:5}, X:{x:1, y:6}, D:{x:2, y:6}, B:{x:2, y:7},
+        E:{x:4, y:1}, I:{x:5, y:1}, S:{x:7, y:1}, H:{x:8, y:1},
+        U:{x:5, y:2}, F:{x:6, y:2}, V:{x:7, y:2},
+        A:{x:4, y:4}, R:{x:5, y:4}, L:{x:7, y:4},
+        W:{x:4, y:6}, P:{x:5, y:6}, J:{x:4, y:7}
     };
 
     const SVG_NS = "http://www.w3.org/2000/svg";
-    const svg = document.getElementById('lines');
+    const svgEl = document.getElementById('chart');
+    const linesLayer = document.getElementById('lines');
     const nodesLayer = document.getElementById('nodes');
-    const uw = 45, uh = 38, ox = 40, oy = 45, nodeSize = 20;
+    let nodeEls = {}, lineEls = {};   // 符号 → 要素（線は行き先の符号で引く）
 
-    // 3. 座標計算とノード配置
-    function getPos(id) {
-        const d = nodeDefs[id.toLowerCase()];
-        return d ? { x: d.x * uw + ox, y: Math.abs(d.y) * uh + oy } : {x:0, y:0};
+    // 3. チャートの組み立て
+    // 欧文: 手で並べた配置を、上から下へ縦に配線する。
+    function enChart() {
+        const uw = 45, uh = 38, ox = 40, oy = 45;
+        const codeOf = {};
+        for (const c in EN_DICT) codeOf[EN_DICT[c]] = c;
+        const nodes = {};
+        for (const ch in EN_LAYOUT) {
+            const d = EN_LAYOUT[ch];
+            nodes[ch === "" ? "" : codeOf[ch]] = { x: d.x * uw + ox, y: d.y * uh + oy, label: d.label || ch };
+        }
+        return { viewBox: "0 0 450 350", nodes, size: 20, font: 11,
+                 wire: (a, b) => `M ${a.x} ${a.y} V ${(a.y + b.y) / 2} H ${b.x} V ${b.y}` };
+    }
+    // 和文: 字数が多いので自動で並べる。左から右へ 1 符号ずつ進み、・ は上、ー は下に枝分かれする。
+    function jaChart() {
+        const colW = 62, rowH = 21, ox = 22, oy = 16;
+        const exists = new Set([""]);
+        for (const c in JA_DICT) for (let i = 1; i <= c.length; i++) exists.add(c.slice(0, i));
+        const nodes = {};
+        let row = 0;
+        (function place(p) {
+            const kids = [p + "・", p + "ー"].filter(k => exists.has(k));
+            const y = kids.length ? kids.map(place).reduce((a, b) => a + b) / kids.length : row++;
+            nodes[p] = { x: p.length * colW + ox, y: y * rowH + oy, label: p === "" ? "S" : (JA_DICT[p] || "") };
+            return y;
+        })("");
+        const w = 6 * colW + ox * 2, h = (row - 1) * rowH + oy * 2;
+        return { viewBox: `0 0 ${w} ${h}`, nodes, size: 17, font: 10,
+                 wire: (a, b) => `M ${a.x} ${a.y} H ${(a.x + b.x) / 2} V ${b.y} H ${b.x}` };
     }
 
-    for (let id in nodeDefs) {
-        const p = getPos(id);
-        const g = document.createElementNS(SVG_NS, "g");
-        g.setAttribute("class", "node" + (id === "start" ? " active" : ""));
-        g.id = `n-${id}`;
-        const rect = document.createElementNS(SVG_NS, "rect");
-        rect.setAttribute("x", p.x - nodeSize / 2);
-        rect.setAttribute("y", p.y - nodeSize / 2);
-        rect.setAttribute("width", nodeSize);
-        rect.setAttribute("height", nodeSize);
-        const text = document.createElementNS(SVG_NS, "text");
-        text.setAttribute("x", p.x);
-        text.setAttribute("y", p.y);
-        text.textContent = nodeDefs[id].label;
-        g.appendChild(rect);
-        g.appendChild(text);
-        nodesLayer.appendChild(g);
-    }
-
-    // 4. SVG配線の初期描画
-    for (let from in tree) {
-        for (let sym in tree[from]) {
-            const to = tree[from][sym];
-            const p1 = getPos(from), p2 = getPos(to);
+    function buildChart() {
+        const spec = alpha === 'ja' ? jaChart() : enChart();
+        svgEl.setAttribute('viewBox', spec.viewBox);
+        linesLayer.textContent = '';
+        nodesLayer.textContent = '';
+        nodeEls = {}; lineEls = {};
+        for (const c in spec.nodes) {
+            if (c === "") continue;
+            const parent = spec.nodes[c.slice(0, -1)];
+            if (!parent) continue;
             const path = document.createElementNS(SVG_NS, "path");
             // クランク（カクカク）状に配線
-            path.setAttribute("d", `M ${p1.x} ${p1.y} V ${(p1.y + p2.y) / 2} H ${p2.x} V ${p2.y}`);
-            path.id = `line-${from}-${to}`;
-            svg.appendChild(path);
+            path.setAttribute("d", spec.wire(parent, spec.nodes[c]));
+            linesLayer.appendChild(path);
+            lineEls[c] = path;
         }
+        for (const c in spec.nodes) {
+            const p = spec.nodes[c], s = spec.size;
+            const g = document.createElementNS(SVG_NS, "g");
+            g.setAttribute("class", "node" + (p.label ? "" : " blank"));
+            const rect = document.createElementNS(SVG_NS, "rect");
+            rect.setAttribute("x", p.x - s / 2);
+            rect.setAttribute("y", p.y - s / 2);
+            rect.setAttribute("width", s);
+            rect.setAttribute("height", s);
+            const text = document.createElementNS(SVG_NS, "text");
+            text.setAttribute("x", p.x);
+            text.setAttribute("y", p.y);
+            text.setAttribute("font-size", spec.font);
+            text.textContent = p.label;
+            g.appendChild(rect);
+            g.appendChild(text);
+            nodesLayer.appendChild(g);
+            nodeEls[c] = g;
+        }
+        update();
     }
 
-    // ページ全体のスクロール/バウンスを抑止（スライダー以外のタッチ移動を無効化）
+    // ページ全体のスクロール/バウンスを抑止（スライダーと文字入力以外のタッチ移動を無効化）
     document.addEventListener('touchmove', (e) => {
-        if (!e.target.closest('input[type=range]')) e.preventDefault();
+        if (!e.target.closest('input')) e.preventDefault();
     }, { passive: false });
     // iOS Safari のピンチズームを抑止（ズームするとページがスクロール可能になってしまうため）
     document.addEventListener('touchstart', (e) => {
@@ -356,63 +425,92 @@
     window.addEventListener('orientationchange', () => setTimeout(resetScroll, 100));
     window.addEventListener('pageshow', resetScroll);
 
-    // 5. ロジック本体
-    // 入力は「キーが下りた / 上がった」の 2 つだけに集約し、ボタンでもマイク（受信）でも同じ判定を通す
+    // 4. ロジック本体
+    // 入力は「キーが下りた / 上がった」の 2 つだけに集約し、ボタンでもマイク（受信）でも自動送信でも同じ判定を通す
     let start = null, timer, code = "";
     const btn = document.getElementById('tap-btn');
+    const msgEl = document.getElementById('message-box');
+    const monitorEl = document.getElementById('code-monitor');
+    const dashTh = () => Number(document.getElementById('dash-thresh').value);
+    const waitTh = () => Number(document.getElementById('wait-thresh').value);
 
     function update() {
         // すべてのリセット
         document.querySelectorAll('.node, path').forEach(el => el.classList.remove('active', 'active-dot', 'active-dash'));
-        document.getElementById('n-start').classList.add('active');
-
-        let curr = "start";
-        for (let s of code.split('')) {
-            const next = tree[curr] ? tree[curr][s] : null;
-            if (next) {
-                const line = document.getElementById(`line-${curr}-${next}`);
-                if (line) line.classList.add(s === '・' ? 'active-dot' : 'active-dash');
-                const n = document.getElementById(`n-${next.toLowerCase()}`);
-                if (n) n.classList.add('active');
-                curr = next;
-            }
+        if (nodeEls[""]) nodeEls[""].classList.add('active');
+        for (let i = 1; i <= code.length; i++) {
+            const c = code.slice(0, i);
+            if (!nodeEls[c]) break;
+            lineEls[c].classList.add(code[i - 1] === '・' ? 'active-dot' : 'active-dash');
+            nodeEls[c].classList.add('active');
         }
     }
 
+    // 受け取った 1 文字を本文に足す。和文の ゛ ゜ は直前のカナとくっつける（カ + ゛ → ガ）
+    function appendChar(ch) {
+        const text = msgEl.textContent;
+        if ((ch === '゛' || ch === '゜') && text) {
+            const merged = (text.slice(-1) + (ch === '゛' ? '゙' : '゚')).normalize('NFC');
+            if (merged.length === 1) { msgEl.textContent = text.slice(0, -1) + merged; return; }
+        }
+        msgEl.textContent = text + ch;
+    }
+
+    // 打ち込み中の符号を 1 文字として確定する
+    function commitLetter() {
+        if (!code) return;
+        const res = morseDict[code];
+        if (res) appendChar(res);
+        code = "";
+        monitorEl.textContent = "";
+        update();
+    }
+
+    function addSpace() {
+        if (msgEl.textContent && !msgEl.textContent.endsWith(' ')) msgEl.textContent += ' ';
+    }
+
+    // WAIT-TH だけ間が空いたら 1 文字確定、さらに WAIT-TH 空いたら単語の区切り（空白）。
+    // タイマーが遅れて鳴ると次の文字とくっついてしまうので、次の音が来た時点でも
+    // 「前の音からの間」を音の時刻で測って確定し直す（タイマーは画面を早く更新するためのもの）。
+    let lastUp = null;
     function keyDown(t) {
-        start = t;
         clearTimeout(timer);
+        if (lastUp !== null) {
+            const gap = t - lastUp;
+            if (gap >= waitTh()) commitLetter();
+            if (gap >= waitTh() * 2) addSpace();
+        }
+        start = t;
     }
 
     function keyUp(t) {
         if (start === null) return;
         const dur = t - start;
         start = null;
+        lastUp = t;
 
-        code += (dur < Number(document.getElementById('dash-thresh').value)) ? "・" : "ー";
-        document.getElementById('code-monitor').innerText = code;
+        code += (dur < dashTh()) ? "・" : "ー";
+        monitorEl.textContent = code;
         update();
 
         timer = setTimeout(() => {
-            const res = morseDict[code];
-            if (res) document.getElementById('message-box').innerText += res;
-            code = "";
-            document.getElementById('code-monitor').innerText = "";
-            update();
-        }, Number(document.getElementById('wait-thresh').value));
+            commitLetter();
+            timer = setTimeout(addSpace, waitTh());
+        }, waitTh());
     }
 
     // イベント処理（iPhoneのマルチタッチやマウス両対応）
-    // 受信モード中はボタンを無視する（入力はマイクから来る）
+    // 受信モード中と自動送信中はボタンを無視する
     const handleStart = (e) => {
         e.preventDefault();
-        if (mode === 'rx') return;
+        if (mode === 'rx' || sending) return;
         if (mode === 'tx') toneOn();
         keyDown(performance.now());
     };
 
     const handleEnd = (e) => {
-        if (mode === 'rx') return;
+        if (mode === 'rx' || sending) return;
         if (mode === 'tx') toneOff();
         keyUp(performance.now());
     };
@@ -423,12 +521,12 @@
     btn.addEventListener('mousedown', handleStart);
     btn.addEventListener('mouseup', handleEnd);
 
-    // 6. 無線（超音波）
+    // 5. 無線（超音波）
     // 送信: ボタンを押している間だけ高い音を鳴らす。受信: マイクでその周波数だけを見張る。
     // 音の立ち上がり/立ち下がりを急にすると「プチッ」という聞こえる雑音が出るので、RAMP 秒かけて増減する。
     const RAMP = 0.012;
     let mode = 'local', actx = null, osc = null, gain = null;
-    let micStream = null, analyser = null, rxTimer = null;
+    let micStream = null;
     const statusEl = document.getElementById('radio-status');
     const freqEl = document.getElementById('freq');
     const rxThEl = document.getElementById('rx-thresh');
@@ -503,67 +601,118 @@
         // 許可を待つ間に別のモードへ切り替えられていたら捨てる
         if (mode !== 'rx') { stream.getTracks().forEach(tr => tr.stop()); return true; }
         micStream = stream;
-        analyser = ctx.createAnalyser();
-        analyser.fftSize = 1024;            // 48kHz で約 21ms の窓。短い「・」でも埋もれない
-        analyser.smoothingTimeConstant = 0;
-        // 出口（スピーカー）につながっていないノードはブラウザが処理を省くことがあるので、音量 0 でつないでおく
-        const mute = ctx.createGain();
-        mute.gain.value = 0;
-        ctx.createMediaStreamSource(micStream).connect(analyser).connect(mute).connect(ctx.destination);
-        rxLoop();
+        try {
+            await attachDetector(ctx.createMediaStreamSource(micStream));
+        } catch (e) {
+            setStatus('受信の準備に失敗しました: ' + e.message, true);
+            return false;
+        }
         setStatus('受信中: ' + (freqEl.value / 1000).toFixed(1) + 'kHz を聞いています（マイク ' + Math.round(ctx.sampleRate / 1000) + 'kHz）');
         return true;
     }
 
     function stopRx() {
-        clearInterval(rxTimer); rxTimer = null;
+        if (detector) { detector.port.onmessage = null; detector.disconnect(); }
+        if (rxSource) rxSource.disconnect();
+        detector = null; rxSource = null;
         if (micStream) micStream.getTracks().forEach(tr => tr.stop());
-        micStream = null; analyser = null;
-        if (start !== null) keyUp(performance.now());
+        micStream = null;
+        if (start !== null) keyUp(rxLastT);
         document.getElementById('meter-fill').style.width = '0';
         document.getElementById('meter').classList.remove('hit');
     }
 
-    // 受信ループ: 目当ての周波数の強さを「少し下の帯域の中央値」と比べた差（dB）で判定する。
-    // 周囲の雑音が大きくなっても差で見るので、しきい値を毎回合わせ直さなくて済む。
-    // チラつきで ・ を誤検出しないよう、状態が STABLE ms 続いたら確定し、時刻は変化した瞬間まで遡る。
-    const STABLE = 25, OFF_HYST = 6, METER_MAX = 40;
-    function rxLoop() {
-        const buf = new Float32Array(analyser.frequencyBinCount);
-        let raw = false, rawSince = 0, on = false;
-        rxTimer = setInterval(() => {
-            if (!analyser) return;
-            analyser.getFloatFrequencyData(buf);
-            const binHz = actx.sampleRate / analyser.fftSize;
-            const k = Math.round(Number(freqEl.value) / binHz);
-            const db = (i) => (i >= 0 && i < buf.length && isFinite(buf[i])) ? buf[i] : -160;
-            const sig = Math.max(db(k - 1), db(k), db(k + 1));
-            // 比較用: 目当てより 0.5〜1.5kHz 下。上側はマイクのフィルタで削られていることがあるので使わない
-            const ref = [];
-            for (let i = k - Math.round(1500 / binHz); i <= k - Math.round(500 / binHz); i++) ref.push(db(i));
-            ref.sort((a, b) => a - b);
-            const snr = sig - ref[ref.length >> 1];
-
-            const th = Number(rxThEl.value);
-            const now = performance.now();
-            const want = on ? snr > th - OFF_HYST : snr > th;
-            if (want !== raw) { raw = want; rawSince = now; }
-            if (raw !== on && now - rawSince >= STABLE) {
-                on = raw;
-                if (on) keyDown(rawSince); else keyUp(rawSince);
+    // 受信の判定は音声処理スレッド（AudioWorklet）で、届いた音を 1 サンプルも飛ばさずに行う。
+    // 画面側のタイマーで覗きに行くと、処理が詰まった瞬間の短い ・ や隙間を取りこぼすため。
+    // - 128 サンプルごとに直近 512 サンプル（48kHz で約 11ms）を窓にかけ、目当ての周波数の強さを測る
+    // - 比較用に 0.5〜1.9kHz 下の 8 点も測り、その中央値との差（dB）で判定する。
+    //   周囲の雑音が大きくなっても差で見るので、しきい値を毎回合わせ直さなくて済む。
+    //   上側はマイクのフィルタで削られていることがあるので使わない
+    // - チラつきで ・ を誤検出しないよう、状態が STABLE ms 続いたら確定し、時刻は変化した瞬間まで遡る
+    // - 時刻は音声の時計（サンプル数）で数えるので、画面側の揺れが長さに乗らない
+    const STABLE = 20, OFF_HYST = 3, METER_MAX = 40;
+    const DETECTOR_SRC = `
+        class MorseDetector extends AudioWorkletProcessor {
+            constructor() {
+                super();
+                this.N = 512;
+                this.ring = new Float32Array(this.N); this.pos = 0; this.frames = 0;
+                this.win = new Float32Array(this.N);
+                for (let i = 0; i < this.N; i++) this.win[i] = 0.5 - 0.5 * Math.cos(2 * Math.PI * i / (this.N - 1));
+                this.freq = 18500; this.th = 12;
+                this.sigP = 0; this.refP = new Float64Array(8);
+                this.raw = false; this.rawSince = 0; this.on = false; this.peak = -99; this.blocks = 0;
+                this.port.onmessage = (e) => { if (e.data.freq) this.freq = e.data.freq; if (e.data.th) this.th = e.data.th; };
             }
+            power(f) {
+                // ゲルツェル法: 1 つの周波数だけの強さを求める
+                const w = 2 * Math.PI * f / sampleRate, c = 2 * Math.cos(w);
+                let s1 = 0, s2 = 0;
+                for (let i = 0; i < this.N; i++) {
+                    const s0 = this.ring[(this.pos + i) % this.N] * this.win[i] + c * s1 - s2;
+                    s2 = s1; s1 = s0;
+                }
+                return s1 * s1 + s2 * s2 - c * s1 * s2;
+            }
+            process(inputs) {
+                const ch = inputs[0] && inputs[0][0];
+                if (!ch) return true;
+                for (let i = 0; i < ch.length; i++) { this.ring[this.pos] = ch[i]; this.pos = (this.pos + 1) % this.N; }
+                this.frames += ch.length;
+                // 強さは直前の値と半々にならし、雑音の一瞬の山で「まだ鳴っている」と見誤らないようにする
+                const db = (p) => 10 * Math.log10(p + 1e-20);
+                this.sigP = 0.5 * this.sigP + 0.5 * this.power(this.freq);
+                for (let k = 0; k < 8; k++) this.refP[k] = 0.5 * this.refP[k] + 0.5 * this.power(this.freq - 500 - k * 200);
+                const ref = Array.from(this.refP).sort((a, b) => a - b);
+                const snr = db(this.sigP) - db((ref[3] + ref[4]) / 2);
+                // 窓の中心の時刻（ms）
+                const now = (this.frames - this.N / 2) / sampleRate * 1000;
+                const want = this.on ? snr > this.th - ${OFF_HYST} : snr > this.th;
+                if (want !== this.raw) { this.raw = want; this.rawSince = now; }
+                if (this.raw !== this.on && now - this.rawSince >= ${STABLE}) {
+                    this.on = this.raw;
+                    this.port.postMessage({ edge: this.on, t: this.rawSince });
+                }
+                this.peak = Math.max(this.peak, snr);
+                if (++this.blocks >= 12) { this.port.postMessage({ snr: this.peak, on: this.on, t: now }); this.peak = -99; this.blocks = 0; }
+                return true;
+            }
+        }
+        registerProcessor('morse-detector', MorseDetector);`;
+    let detector = null, rxSource = null, rxLastT = 0, workletReady = null;
 
-            const fill = Math.max(0, Math.min(1, snr / METER_MAX));
+    // 音源（マイクなど）を判定器につなぐ
+    async function attachDetector(source) {
+        const ctx = audioCtx();
+        if (!workletReady) {
+            const url = URL.createObjectURL(new Blob([DETECTOR_SRC], { type: 'application/javascript' }));
+            workletReady = ctx.audioWorklet.addModule(url);
+        }
+        await workletReady;
+        detector = new AudioWorkletNode(ctx, 'morse-detector', { numberOfOutputs: 1 });
+        detector.port.postMessage({ freq: Number(freqEl.value), th: Number(rxThEl.value) });
+        detector.port.onmessage = (e) => {
+            const d = e.data;
+            rxLastT = d.t;
+            if ('edge' in d) { if (d.edge) keyDown(d.t); else keyUp(d.t); return; }
+            const fill = Math.max(0, Math.min(1, d.snr / METER_MAX));
             document.getElementById('meter-fill').style.width = (fill * 100) + '%';
-            document.getElementById('meter').classList.toggle('hit', on);
-        }, 10);
+            document.getElementById('meter').classList.toggle('hit', d.on);
+        };
+        // 出口（スピーカー）につながっていないノードはブラウザが処理を省くことがあるので、音量 0 でつないでおく
+        const mute = ctx.createGain();
+        mute.gain.value = 0;
+        rxSource = source;
+        source.connect(detector).connect(mute).connect(ctx.destination);
     }
 
     async function setMode(m) {
         if (m === mode) return;
+        stopSend();
         if (mode === 'tx') stopTx();
         if (mode === 'rx') stopRx();
         mode = m;
+        lastUp = null;
         document.querySelectorAll('.mode-group button').forEach(b => b.classList.toggle('on', b.dataset.mode === m));
         document.body.classList.toggle('mode-rx', m === 'rx');
         setStatus('');
@@ -575,28 +724,162 @@
         b.addEventListener('click', () => setMode(b.dataset.mode));
     });
 
-    freqEl.oninput = function() {
-        document.getElementById('v-freq').innerText = (this.value / 1000).toFixed(1) + "kHz";
-        if (osc) osc.frequency.setValueAtTime(Number(this.value), actx.currentTime);
-    };
-    function showRxTh() {
-        document.getElementById('v-rx').innerText = rxThEl.value + "dB";
-        document.getElementById('meter-th').style.left = Math.min(100, rxThEl.value / METER_MAX * 100) + '%';
+    // 6. 文章の自動送信
+    // 打った文章を符号に直し、SIGNAL を押すのと同じ長さで鳴らす。長さは受け手の判定に合わせて
+    // DASH-TH / WAIT-TH から決めるので、2 台のスライダーを同じにしておけば読み取れる。
+    let sending = false, sendTimers = [];
+    const sendInput = document.getElementById('send-text');
+    const sendBtn = document.getElementById('send-btn');
+    const SMALL_KANA = { "ァ":"ア","ィ":"イ","ゥ":"ウ","ェ":"エ","ォ":"オ","ッ":"ツ","ャ":"ヤ","ュ":"ユ","ョ":"ヨ","ヮ":"ワ","ヵ":"カ","ヶ":"ケ" };
+
+    // 文章 → [{ch, code}]（空白は code: " "）。送れない文字は skipped に集める
+    function encode(text) {
+        const dict = {};
+        for (const c in morseDict) dict[morseDict[c]] = c;
+        const out = [], skipped = new Set();
+        let s = text.normalize('NFKC');
+        if (alpha === 'en') s = s.toUpperCase();
+        // 和文: ひらがな → カタカナ、濁音は「清音 + ゛」に分ける（ガ → カ ゛）
+        if (alpha === 'ja') s = s.replace(/[ぁ-ゖ]/g, c => String.fromCharCode(c.charCodeAt(0) + 0x60)).normalize('NFD');
+        for (let ch of s) {
+            if (ch === '゙') ch = '゛';
+            if (ch === '゚') ch = '゜';
+            if (alpha === 'ja') { ch = SMALL_KANA[ch] || ch; if (ch === '-') ch = 'ー'; if (ch === ',') ch = '、'; if (ch === '.') ch = '。'; }
+            if (/\s/.test(ch)) { if (out.length && out[out.length - 1].code !== ' ') out.push({ ch: ' ', code: ' ' }); continue; }
+            if (dict[ch]) out.push({ ch, code: dict[ch] });
+            else skipped.add(ch);
+        }
+        while (out.length && out[out.length - 1].code === ' ') out.pop();
+        return { out, skipped: [...skipped] };
     }
-    rxThEl.oninput = showRxTh;
-    showRxTh();
+
+    function sendText() {
+        if (sending) { stopSend(); return; }
+        if (mode === 'rx') return;
+        const { out, skipped } = encode(sendInput.value);
+        if (!out.length) {
+            setStatus(skipped.length ? '送れる文字がありません（' + (alpha === 'ja' ? '和文はカナ・数字' : '欧文は英字・数字') + 'だけ）' : '', !!skipped.length);
+            return;
+        }
+        // 受け手の判定に余裕を持って収まる長さ: ・ は DASH-TH の半分、ー は 1.75 倍、
+        // 文字の間は WAIT-TH の 1.4 倍（確定はするが空白にはならない）、単語の間は 2.5 倍
+        const D = dashTh(), W = waitTh();
+        const dot = D * 0.5, dash = D * 1.75, gap = Math.min(dot, W * 0.5), letterGap = W * 1.4, wordGap = W * 2.5;
+        const events = [];   // [開始ms, 長さms, 何文字目]
+        let t = 0;
+        out.forEach((o, idx) => {
+            if (o.code === ' ') { t += wordGap - letterGap; return; }
+            for (const s of o.code) {
+                const len = s === '・' ? dot : dash;
+                events.push([t, len, idx]);
+                t += len + gap;
+            }
+            t += letterGap - gap;
+        });
+
+        sending = true;
+        document.body.classList.add('sending');
+        sendBtn.textContent = 'STOP';
+        const lead = 150;
+        const t0 = performance.now() + lead;
+        if (mode === 'tx' && gain) {
+            // 音は Web Audio の時計で予約しておく（setTimeout の揺れが音の長さに乗らない）
+            const a0 = actx.currentTime + lead / 1000;
+            const g = gain.gain;
+            g.cancelScheduledValues(actx.currentTime);
+            g.setValueAtTime(0, actx.currentTime);
+            for (const [s, len] of events) {
+                const ts = a0 + s / 1000, te = ts + len / 1000;
+                g.setValueAtTime(0, ts);
+                g.linearRampToValueAtTime(1, ts + RAMP);
+                g.setValueAtTime(1, te - RAMP);
+                g.linearRampToValueAtTime(0, te);
+            }
+        }
+        // 画面（回路図と本文）は手で打ったときと同じ処理で動かす
+        const visible = out.filter(o => o.code !== ' ').length;
+        for (const [s, len, idx] of events) {
+            sendTimers.push(setTimeout(() => {
+                keyDown(t0 + s);
+                document.body.classList.add('tone-on');
+                setStatus('自動送信中: ' + out.slice(0, idx + 1).map(o => o.ch).join('') + '（' + (out.slice(0, idx + 1).filter(o => o.code !== ' ').length) + '/' + visible + '）');
+            }, t0 + s - performance.now()));
+            sendTimers.push(setTimeout(() => {
+                keyUp(t0 + s + len);
+                document.body.classList.remove('tone-on');
+            }, t0 + s + len - performance.now()));
+        }
+        sendTimers.push(setTimeout(() => finishSend(skipped), t0 + t - performance.now()));
+    }
+
+    function finishSend(skipped) {
+        sending = false;
+        sendTimers = [];
+        document.body.classList.remove('sending', 'tone-on');
+        sendBtn.textContent = 'SEND';
+        setStatus(skipped && skipped.length ? '送れなかった文字: ' + skipped.join(' ') : '送信しました', !!(skipped && skipped.length));
+    }
+
+    function stopSend() {
+        if (!sending) return;
+        sendTimers.forEach(clearTimeout);
+        if (gain) { gain.gain.cancelScheduledValues(actx.currentTime); gain.gain.setValueAtTime(0, actx.currentTime); }
+        if (start !== null) keyUp(performance.now());
+        finishSend();
+        setStatus('送信を止めました');
+    }
+
+    sendBtn.addEventListener('click', sendText);
+    sendInput.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.isComposing) { e.preventDefault(); sendText(); } });
+
+    // 7. 欧文 / 和文の切り替え
+    function setAlpha(a) {
+        if (a === alpha) return;
+        stopSend();
+        alpha = a;
+        morseDict = ALPHABETS[a];
+        code = "";
+        lastUp = null;
+        monitorEl.textContent = "";
+        clearTimeout(timer);
+        document.querySelectorAll('.alpha-group button').forEach(b => b.classList.toggle('on', b.dataset.alpha === a));
+        sendInput.placeholder = a === 'ja' ? 'カナ・ひらがな・数字（例: コンニチハ）' : 'A-Z / 0-9（例: HELLO WORLD）';
+        buildChart();
+    }
+    document.querySelectorAll('.alpha-group button').forEach(b => {
+        b.addEventListener('click', () => setAlpha(b.dataset.alpha));
+    });
 
     // リセット関数
     function fullReset() {
-        document.getElementById('message-box').innerText = "";
-        document.getElementById('code-monitor').innerText = "";
+        stopSend();
+        msgEl.textContent = "";
+        monitorEl.textContent = "";
+        clearTimeout(timer);
         code = "";
+        lastUp = null;
         update();
     }
 
     // 設定スライダー
     document.getElementById('dash-thresh').oninput = function() { document.getElementById('v-dash').innerText = this.value + "ms"; };
     document.getElementById('wait-thresh').oninput = function() { document.getElementById('v-wait').innerText = this.value + "ms"; };
+    freqEl.oninput = function() {
+        document.getElementById('v-freq').innerText = (this.value / 1000).toFixed(1) + "kHz";
+        if (osc) osc.frequency.setValueAtTime(Number(this.value), actx.currentTime);
+        if (detector) detector.port.postMessage({ freq: Number(this.value) });
+    };
+    function showRxTh() {
+        document.getElementById('v-rx').innerText = rxThEl.value + "dB";
+        document.getElementById('meter-th').style.left = Math.min(100, rxThEl.value / METER_MAX * 100) + '%';
+    }
+    rxThEl.oninput = () => {
+        showRxTh();
+        if (detector) detector.port.postMessage({ th: Number(rxThEl.value) });
+    };
+    showRxTh();
+
+    buildChart();
 </script>
 </body>
 </html>
