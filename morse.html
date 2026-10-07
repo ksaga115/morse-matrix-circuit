@@ -109,7 +109,8 @@
             flex-shrink: 0; /* 狭い画面でも円形を保つ */
         }
         #tap-btn:active, #tap-btn.pressed { background: #333; transform: scale(0.94); box-shadow: none; }
-        #v-timing { font-size: 0.6rem; color: #666; }
+        /* 先頭の span は幅 80px の見出し扱いになるので、長さの表示だけは幅を外して折り返さない */
+        .param span#v-timing { width: auto; white-space: nowrap; font-size: 0.6rem; color: #666; }
         
         .reset-btn { 
             background: #2a0000; color: #ff6666; border: 1px solid #552222; 
@@ -138,6 +139,50 @@
         .meter-th { position: absolute; top: -3px; bottom: -3px; width: 2px; background: var(--dash-color); }
         #radio-status { color: #666; flex-basis: 100%; min-height: 1em; }
         #radio-status.err { color: #ff6666; }
+        .freq-presets { display: flex; gap: 4px; }
+        .freq-presets button {
+            background: #000; color: #888; border: 1px solid #333; border-radius: 3px; padding: 3px 6px;
+            font-family: inherit; font-size: 0.65rem; cursor: pointer; -webkit-tap-highlight-color: transparent;
+        }
+        #sos-btn {
+            background: #2a0000; color: #ff6666; border: 1px solid #aa3333; border-radius: 4px; padding: 6px 12px;
+            font-family: inherit; font-size: 0.75rem; font-weight: bold; cursor: pointer; -webkit-tap-highlight-color: transparent;
+        }
+
+        /* SOS ビーコン（全画面） */
+        #sos-overlay {
+            position: fixed; inset: 0; z-index: 10; background: #120000; color: #ffb3b3;
+            display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px;
+            padding: calc(20px + env(safe-area-inset-top)) 20px calc(20px + env(safe-area-inset-bottom));
+            text-align: center; overflow-y: auto;
+        }
+        #sos-overlay[hidden] { display: none; }
+        #sos-overlay .sos-title { font-size: 2.6rem; font-weight: bold; color: #ff3333; letter-spacing: 6px; }
+        #sos-overlay .sos-state { font-size: 0.85rem; min-height: 1.2em; }
+        #sos-overlay label { font-size: 0.75rem; color: #aa7777; display: block; margin-bottom: 6px; }
+        #sos-overlay .sos-setup { width: 100%; max-width: 420px; display: flex; flex-direction: column; align-items: center; }
+        #sos-msg {
+            width: 100%; background: #000; color: #fff; border: 1px solid #552222; border-radius: 4px;
+            padding: 10px; font-family: inherit; font-size: 16px; text-align: center;
+            -webkit-user-select: text; user-select: text;
+        }
+        #sos-overlay .sos-freq { display: flex; flex-direction: row; width: auto; border: 1px solid #552222; border-radius: 4px; overflow: hidden; }
+        #sos-overlay .sos-freq button {
+            background: #000; color: #aa7777; border: none; padding: 8px 12px; font-family: inherit; font-size: 0.75rem; cursor: pointer;
+        }
+        #sos-overlay .sos-freq button + button { border-left: 1px solid #552222; }
+        #sos-overlay .sos-freq button.on { background: #aa3333; color: #fff; font-weight: bold; }
+        #sos-start {
+            width: 180px; height: 180px; border-radius: 50%; border: 5px solid #ff3333; background: #2a0000; color: #fff;
+            font-family: inherit; font-size: 1.3rem; font-weight: bold; cursor: pointer; -webkit-tap-highlight-color: transparent;
+            flex-shrink: 0;
+        }
+        #sos-close { background: none; border: 1px solid #552222; color: #aa7777; border-radius: 4px; padding: 6px 16px; font-family: inherit; cursor: pointer; width: auto; }
+        #sos-overlay .sos-note { font-size: 0.7rem; color: #886666; max-width: 420px; line-height: 1.5; }
+        /* 発信中は設定を隠し、鳴っている間だけ画面全体を白く光らせる（夜に光でも気づいてもらうため） */
+        #sos-overlay.on .sos-setup { display: none; }
+        body.tone-on #sos-overlay.on { background: #fff; color: #000; }
+        body.tone-on #sos-overlay.on .sos-title { color: #000; }
         .alpha-group { border-color: #333; }
         .send-row { display: flex; gap: 6px; flex-basis: 100%; }
         #send-text {
@@ -255,11 +300,17 @@
         <button data-alpha="en" class="on">欧文</button>
         <button data-alpha="ja">和文</button>
     </div>
+    <button id="sos-btn" title="SOS と名前・状況をくり返し発信する">SOS</button>
     <button id="auto-btn" class="on" title="・とーの境目を、受け取った長さから自動で決める">長短 AUTO</button>
     <div class="param">
         <span>FREQ</span>
-        <input type="range" id="freq" min="15000" max="23000" step="100" value="18500">
+        <input type="range" id="freq" min="1000" max="23000" step="100" value="18500">
         <span id="v-freq">18.5kHz</span>
+        <div class="freq-presets">
+            <button data-freq="3000" title="聞こえる音（SOS ビーコンの初期値）">3k</button>
+            <button data-freq="18500">18.5k</button>
+            <button data-freq="20000">20k</button>
+        </div>
     </div>
     <div class="param rx-only">
         <span>RX-TH</span>
@@ -297,6 +348,23 @@
     <button id="tap-btn">SIGNAL</button>
 </div>
 
+<div id="sos-overlay" hidden>
+    <div class="sos-title">SOS</div>
+    <div class="sos-state" id="sos-state"></div>
+    <div class="sos-setup">
+        <label for="sos-msg">名前・状況（欧文なら英字・数字、和文ならカナ・数字）</label>
+        <input type="text" id="sos-msg" placeholder="例: TANAKA 2F / タナカ 2カイ" autocomplete="off">
+    </div>
+    <div class="sos-freq sos-setup">
+        <button data-sosfreq="3000" class="on">聞こえる音 3kHz</button>
+        <button data-sosfreq="20000">超音波 20kHz</button>
+    </div>
+    <button id="sos-start">発信する</button>
+    <button id="sos-close" class="sos-setup">閉じる</button>
+    <div class="sos-note">SOS ×3 → 名前・状況 → 3 秒休み、を止めるまでくり返します。音量は最大に。
+        画面を消したり Safari を閉じたりすると止まるので、発信中は画面がつきっぱなしになります。</div>
+</div>
+
 <script>
     // 1. 符号表。キーは符号（・ と ー の並び）、値は文字
     // 欧文: A〜Z と数字・記号
@@ -322,6 +390,9 @@
         "ー・・・・":"6","ーー・・・":"7","ーーー・・":"8","ーーーー・":"9","ーーーーー":"0"
     };
     const ALPHABETS = { en: EN_DICT, ja: JA_DICT };
+    // 文字の間を空けずに続けて打つ特別な符号（欧文・和文共通）。回路図には載せない
+    const SOS_CODE = "・・・ーーー・・・";
+    const PROSIGNS = { [SOS_CODE]: "SOS" };
     let alpha = 'en';
     let morseDict = EN_DICT;
 
@@ -512,7 +583,7 @@
     function commitLetter() {
         if (!code) return;
         if (curDurs.length === code.length) code = curDurs.map(([, d]) => d < dotDashTh() ? "・" : "ー").join("");
-        const res = morseDict[code];
+        const res = morseDict[code] || PROSIGNS[code];
         if (res) appendChar(res);
         curDurs = [];
         code = "";
@@ -582,7 +653,7 @@
     // PC ではスペースキーでも打てる。ボタンにフォーカスがあると Space で「クリック」されてしまうので、先に横取りする
     let spaceDown = false;
     document.addEventListener('keydown', (e) => {
-        if (e.code !== 'Space' || e.target.closest('input[type=text]')) return;
+        if (e.code !== 'Space' || e.target.closest('input[type=text]') || !sosOverlay.hidden) return;
         e.preventDefault();
         if (e.repeat || spaceDown) return;
         spaceDown = true;
@@ -867,6 +938,11 @@
             setStatus(skipped.length ? '送れる文字がありません（' + (alpha === 'ja' ? '和文はカナ・数字' : '欧文は英字・数字') + 'だけ）' : '', !!skipped.length);
             return;
         }
+        transmit(out, '自動送信中', () => finishSend(skipped));
+    }
+
+    // 並べた符号 [{ch, code}] を鳴らし、画面も動かす。終わったら onDone
+    function transmit(out, label, onDone) {
         const u = unit();
         const dot = u, dash = u * 3, gap = u, letterGap = u * 3, wordGap = u * 7;
         const events = [];   // [開始ms, 長さms, 何文字目]
@@ -890,8 +966,7 @@
             // 音は Web Audio の時計で予約しておく（setTimeout の揺れが音の長さに乗らない）
             const a0 = actx.currentTime + lead / 1000;
             const g = gain.gain;
-            g.cancelScheduledValues(actx.currentTime);
-            g.setValueAtTime(0, actx.currentTime);
+            try { if (g.cancelAndHoldAtTime) g.cancelAndHoldAtTime(actx.currentTime); else g.cancelScheduledValues(actx.currentTime); } catch (e) {}
             const r = rampSec(), up = rampCurve(0, 1), down = rampCurve(1, 0);
             for (const [s, len] of events) {
                 const ts = a0 + s / 1000, te = ts + len / 1000;
@@ -905,14 +980,14 @@
             sendTimers.push(setTimeout(() => {
                 keyDown(t0 + s);
                 document.body.classList.add('tone-on');
-                setStatus('自動送信中: ' + out.slice(0, idx + 1).map(o => o.ch).join('') + '（' + (out.slice(0, idx + 1).filter(o => o.code !== ' ').length) + '/' + visible + '）');
+                setStatus(label + ': ' + out.slice(0, idx + 1).map(o => o.ch).join('') + '（' + (out.slice(0, idx + 1).filter(o => o.code !== ' ').length) + '/' + visible + '）');
             }, t0 + s - performance.now()));
             sendTimers.push(setTimeout(() => {
                 keyUp(t0 + s + len);
                 document.body.classList.remove('tone-on');
             }, t0 + s + len - performance.now()));
         }
-        sendTimers.push(setTimeout(() => finishSend(skipped), t0 + t - performance.now()));
+        sendTimers.push(setTimeout(onDone, t0 + t - performance.now()));
     }
 
     function finishSend(skipped) {
@@ -935,7 +1010,103 @@
     sendBtn.addEventListener('click', sendText);
     sendInput.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.isComposing) { e.preventDefault(); sendText(); } });
 
-    // 7. 欧文 / 和文の切り替え
+    // 7. SOS ビーコン
+    // SOS ×3 → 名前・状況 → 3 秒休み、を止めるまでくり返す。初期は聞こえる 3kHz（人の耳がいちばん敏感で、
+    // スマホのスピーカーもよく鳴る高さ。防災用の笛と同じくらい）。鳴っている間は画面全体を白く光らせる。
+    const sosOverlay = document.getElementById('sos-overlay');
+    const sosMsgEl = document.getElementById('sos-msg');
+    const sosStateEl = document.getElementById('sos-state');
+    const sosStartBtn = document.getElementById('sos-start');
+    const SOS_PAUSE = 3000, SOS_KEY = 'morse-sos-msg';
+    let sosOn = false, sosTimer = null, sosFreq = 3000, sosPrev = null, wakeLock = null, sosCycles = 0;
+    try { sosMsgEl.value = localStorage.getItem(SOS_KEY) || ''; } catch (e) {}
+
+    function openSos() {
+        stopSend();
+        sosOverlay.hidden = false;
+        sosStateEl.textContent = '名前・状況を入れて「発信する」';
+    }
+    function closeSos() {
+        if (sosOn) return;
+        sosOverlay.hidden = true;
+    }
+
+    async function keepAwake() {
+        try {
+            if (navigator.wakeLock && !wakeLock) {
+                wakeLock = await navigator.wakeLock.request('screen');
+                wakeLock.addEventListener('release', () => { wakeLock = null; });
+            }
+        } catch (e) {}
+    }
+    // 別のアプリから戻ってきたら、画面をつけたままにする設定をかけ直す
+    document.addEventListener('visibilitychange', () => { if (sosOn && document.visibilityState === 'visible') keepAwake(); });
+
+    function sosSequence() {
+        const sos = { ch: 'SOS', code: SOS_CODE }, sp = { ch: ' ', code: ' ' };
+        const { out, skipped } = encode(sosMsgEl.value);
+        return { out: [sos, sp, sos, sp, sos].concat(out.length ? [sp].concat(out) : []), skipped };
+    }
+
+    async function startSos() {
+        try { localStorage.setItem(SOS_KEY, sosMsgEl.value); } catch (e) {}
+        sosPrev = { freq: freqEl.value, mode };
+        if (mode !== 'tx') await setMode('tx');
+        // 端末の上限は TX を始めてからわかるので、そのあとで合わせる
+        freqEl.value = Math.min(sosFreq, Number(freqEl.max));
+        freqEl.dispatchEvent(new Event('input'));
+        sosOn = true; sosCycles = 0;
+        sosOverlay.classList.add('on');
+        sosStartBtn.textContent = '止める';
+        keepAwake();
+        sosCycle();
+    }
+
+    function sosCycle() {
+        if (!sosOn) return;
+        const { out, skipped } = sosSequence();
+        sosCycles++;
+        const msg = out.slice(5).map(o => o.ch).join('').trim();
+        sosStateEl.textContent = '発信中（' + sosCycles + ' 回目）' + (msg ? ': ' + msg : '') + (skipped.length ? '　送れない文字: ' + skipped.join(' ') : '');
+        sending = true;
+        transmit(out, 'SOS 発信中', () => {
+            sending = false; sendTimers = [];
+            document.body.classList.remove('sending', 'tone-on');
+            sendBtn.textContent = 'SEND';
+            if (sosOn) { sosStateEl.textContent = '休み中（' + sosCycles + ' 回送信）'; sosTimer = setTimeout(sosCycle, SOS_PAUSE); }
+        });
+    }
+
+    function stopSos() {
+        sosOn = false;
+        clearTimeout(sosTimer);
+        stopSend();
+        if (wakeLock) { wakeLock.release().catch(() => {}); wakeLock = null; }
+        sosOverlay.classList.remove('on');
+        sosStartBtn.textContent = '発信する';
+        sosStateEl.textContent = '止めました（' + sosCycles + ' 回送信）';
+        if (sosPrev) {
+            freqEl.value = sosPrev.freq;
+            freqEl.dispatchEvent(new Event('input'));
+            if (sosPrev.mode !== 'tx') setMode(sosPrev.mode);
+            sosPrev = null;
+        }
+    }
+
+    document.getElementById('sos-btn').addEventListener('click', openSos);
+    document.getElementById('sos-close').addEventListener('click', closeSos);
+    sosStartBtn.addEventListener('click', () => { if (sosOn) stopSos(); else startSos(); });
+    document.querySelectorAll('[data-sosfreq]').forEach(b => b.addEventListener('click', () => {
+        sosFreq = Number(b.dataset.sosfreq);
+        document.querySelectorAll('[data-sosfreq]').forEach(x => x.classList.toggle('on', x === b));
+    }));
+    // 受ける側がすぐ合わせられるよう、よく使う周波数のボタン
+    document.querySelectorAll('.freq-presets button').forEach(b => b.addEventListener('click', () => {
+        freqEl.value = Math.min(Number(b.dataset.freq), Number(freqEl.max));
+        freqEl.dispatchEvent(new Event('input'));
+    }));
+
+    // 8. 欧文 / 和文の切り替え
     function setAlpha(a) {
         if (a === alpha) return;
         stopSend();
