@@ -114,6 +114,32 @@
             margin-top: 8px; text-align: center;
         }
 
+        /* 無線（超音波）バー */
+        .radio-bar {
+            width: 100%; padding: 8px 15px; background: var(--panel-bg);
+            border-bottom: 1px solid #222; flex-shrink: 0;
+            display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px;
+            font-size: 0.7rem; color: #888;
+        }
+        .mode-group { display: flex; border: 1px solid #333; border-radius: 4px; overflow: hidden; }
+        .mode-group button {
+            background: #000; color: #777; border: none; padding: 6px 10px; font-family: inherit;
+            font-size: 0.7rem; cursor: pointer; -webkit-tap-highlight-color: transparent;
+        }
+        .mode-group button + button { border-left: 1px solid #333; }
+        .mode-group button.on { background: var(--gold); color: #000; font-weight: bold; }
+        .radio-bar .param span:first-child { width: auto; }
+        .meter { position: relative; width: 90px; height: 8px; background: #000; border: 1px solid #333; border-radius: 2px; }
+        .meter-fill { position: absolute; left: 0; top: 0; bottom: 0; width: 0; background: #539bf5; }
+        .meter.hit .meter-fill { background: var(--active); }
+        .meter-th { position: absolute; top: -3px; bottom: -3px; width: 2px; background: var(--dash-color); }
+        #radio-status { color: #666; flex-basis: 100%; min-height: 1em; }
+        #radio-status.err { color: #ff6666; }
+        .rx-only { display: none; }
+        body.mode-rx .rx-only { display: flex; }
+        body.mode-rx #tap-btn { opacity: 0.35; }
+        body.tone-on #tap-btn { border-color: var(--active); box-shadow: 0 0 14px var(--active); }
+
         /* 4. 幅の狭い端末（320px 前後）向け: コントロールをコンパクトにして横にはみ出さないようにする */
         @media (max-width: 360px) {
             .controls { padding-left: 12px; padding-right: 12px; gap: 8px; }
@@ -122,6 +148,8 @@
             input[type=range] { width: 70px; }
             #tap-btn { width: 80px; height: 80px; font-size: 0.8rem; }
             .output-section { padding-left: 10px; padding-right: 10px; gap: 8px; }
+            .radio-bar { padding-left: 10px; padding-right: 10px; gap: 6px 10px; }
+            .meter { width: 70px; }
         }
 
         /* 5. 横向き（高さが足りない画面）向け: チャートを左いっぱいに、表示と操作パネルを右側の列にまとめる */
@@ -129,11 +157,11 @@
             body {
                 display: grid;
                 grid-template-columns: 1fr minmax(230px, 300px);
-                grid-template-rows: auto 1fr;
+                grid-template-rows: auto auto 1fr;
                 align-items: stretch;
             }
             #chart-viewport {
-                grid-column: 1; grid-row: 1 / 3;
+                grid-column: 1; grid-row: 1 / 4;
                 padding-left: env(safe-area-inset-left);
             }
             .output-section {
@@ -143,10 +171,15 @@
                 padding-right: calc(10px + env(safe-area-inset-right));
                 border-bottom: 1px solid #222; border-left: 1px solid #222;
             }
+            .radio-bar {
+                grid-column: 2; grid-row: 2; padding: 6px 10px;
+                padding-right: calc(10px + env(safe-area-inset-right));
+                border-left: 1px solid #222; gap: 6px 10px;
+            }
             .display-box { min-height: 44px; }
             #message-box { font-size: 1.1rem; }
             .controls {
-                grid-column: 2; grid-row: 2;
+                grid-column: 2; grid-row: 3;
                 flex-direction: column; justify-content: space-evenly; gap: 8px;
                 padding: 10px; padding-bottom: calc(10px + env(safe-area-inset-bottom));
                 padding-right: calc(10px + env(safe-area-inset-right));
@@ -186,6 +219,29 @@
         <div class="label">Decoded Message</div>
         <div id="message-box"></div>
     </div>
+</div>
+
+<div class="radio-bar">
+    <div class="mode-group">
+        <button data-mode="local" class="on">LOCAL</button>
+        <button data-mode="tx">TX 送信</button>
+        <button data-mode="rx">RX 受信</button>
+    </div>
+    <div class="param">
+        <span>FREQ</span>
+        <input type="range" id="freq" min="15000" max="20000" step="100" value="18500">
+        <span id="v-freq">18.5kHz</span>
+    </div>
+    <div class="param rx-only">
+        <span>RX-TH</span>
+        <input type="range" id="rx-thresh" min="3" max="30" step="1" value="12">
+        <span id="v-rx">12dB</span>
+    </div>
+    <div class="param rx-only">
+        <span>LEVEL</span>
+        <div class="meter" id="meter"><div class="meter-fill" id="meter-fill"></div><div class="meter-th" id="meter-th"></div></div>
+    </div>
+    <div id="radio-status"></div>
 </div>
 
 <div id="chart-viewport">
@@ -301,14 +357,15 @@
     window.addEventListener('pageshow', resetScroll);
 
     // 5. ロジック本体
-    let start, timer, code = "";
+    // 入力は「キーが下りた / 上がった」の 2 つだけに集約し、ボタンでもマイク（受信）でも同じ判定を通す
+    let start = null, timer, code = "";
     const btn = document.getElementById('tap-btn');
 
     function update() {
         // すべてのリセット
         document.querySelectorAll('.node, path').forEach(el => el.classList.remove('active', 'active-dot', 'active-dash'));
         document.getElementById('n-start').classList.add('active');
-        
+
         let curr = "start";
         for (let s of code.split('')) {
             const next = tree[curr] ? tree[curr][s] : null;
@@ -322,19 +379,17 @@
         }
     }
 
-    // イベント処理（iPhoneのマルチタッチやマウス両対応）
-    const handleStart = (e) => {
-        e.preventDefault();
-        start = Date.now();
+    function keyDown(t) {
+        start = t;
         clearTimeout(timer);
-    };
+    }
 
-    const handleEnd = (e) => {
-        const dur = Date.now() - start;
-        if (!start) return;
+    function keyUp(t) {
+        if (start === null) return;
+        const dur = t - start;
         start = null;
-        
-        code += (dur < document.getElementById('dash-thresh').value) ? "・" : "ー";
+
+        code += (dur < Number(document.getElementById('dash-thresh').value)) ? "・" : "ー";
         document.getElementById('code-monitor').innerText = code;
         update();
 
@@ -344,13 +399,192 @@
             code = "";
             document.getElementById('code-monitor').innerText = "";
             update();
-        }, document.getElementById('wait-thresh').value);
+        }, Number(document.getElementById('wait-thresh').value));
+    }
+
+    // イベント処理（iPhoneのマルチタッチやマウス両対応）
+    // 受信モード中はボタンを無視する（入力はマイクから来る）
+    const handleStart = (e) => {
+        e.preventDefault();
+        if (mode === 'rx') return;
+        if (mode === 'tx') toneOn();
+        keyDown(performance.now());
+    };
+
+    const handleEnd = (e) => {
+        if (mode === 'rx') return;
+        if (mode === 'tx') toneOff();
+        keyUp(performance.now());
     };
 
     btn.addEventListener('touchstart', handleStart);
     btn.addEventListener('touchend', handleEnd);
+    btn.addEventListener('touchcancel', handleEnd);
     btn.addEventListener('mousedown', handleStart);
     btn.addEventListener('mouseup', handleEnd);
+
+    // 6. 無線（超音波）
+    // 送信: ボタンを押している間だけ高い音を鳴らす。受信: マイクでその周波数だけを見張る。
+    // 音の立ち上がり/立ち下がりを急にすると「プチッ」という聞こえる雑音が出るので、RAMP 秒かけて増減する。
+    const RAMP = 0.012;
+    let mode = 'local', actx = null, osc = null, gain = null;
+    let micStream = null, analyser = null, rxTimer = null;
+    const statusEl = document.getElementById('radio-status');
+    const freqEl = document.getElementById('freq');
+    const rxThEl = document.getElementById('rx-thresh');
+
+    function setStatus(msg, err) {
+        statusEl.textContent = msg || '';
+        statusEl.classList.toggle('err', !!err);
+    }
+
+    function audioCtx() {
+        if (!actx) actx = new (window.AudioContext || window.webkitAudioContext)();
+        if (actx.state === 'suspended') actx.resume();
+        return actx;
+    }
+
+    function toneOn() {
+        if (!gain) return;
+        const t = actx.currentTime;
+        osc.frequency.setValueAtTime(Number(freqEl.value), t);
+        gain.gain.cancelScheduledValues(t);
+        gain.gain.setValueAtTime(gain.gain.value, t);
+        gain.gain.linearRampToValueAtTime(1, t + RAMP);
+        document.body.classList.add('tone-on');
+    }
+
+    function toneOff() {
+        if (!gain) return;
+        const t = actx.currentTime;
+        gain.gain.cancelScheduledValues(t);
+        gain.gain.setValueAtTime(gain.gain.value, t);
+        gain.gain.linearRampToValueAtTime(0, t + RAMP);
+        document.body.classList.remove('tone-on');
+    }
+
+    function startTx() {
+        // iPhone のマナーモードでも Web Audio を鳴らせるようにする（Safari 16.4+）
+        try { if (navigator.audioSession) navigator.audioSession.type = 'playback'; } catch (e) {}
+        const ctx = audioCtx();
+        osc = ctx.createOscillator();
+        osc.type = 'sine';
+        osc.frequency.value = Number(freqEl.value);
+        gain = ctx.createGain();
+        gain.gain.value = 0;
+        osc.connect(gain).connect(ctx.destination);
+        osc.start();
+        setStatus('送信中: SIGNAL を押している間だけ ' + (freqEl.value / 1000).toFixed(1) + 'kHz を出します。音量は最大に');
+    }
+
+    function stopTx() {
+        if (osc) { try { osc.stop(); } catch (e) {} osc.disconnect(); }
+        osc = null; gain = null;
+        document.body.classList.remove('tone-on');
+    }
+
+    async function startRx() {
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+            setStatus('マイクが使えません（https で開いてください）', true);
+            return false;
+        }
+        try { if (navigator.audioSession) navigator.audioSession.type = 'play-and-record'; } catch (e) {}
+        const ctx = audioCtx();
+        let stream;
+        try {
+            // 音声通話向けの加工（エコー除去・雑音除去・自動音量）は高い音を消してしまうので切る
+            stream = await navigator.mediaDevices.getUserMedia({
+                audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false }
+            });
+        } catch (e) {
+            setStatus('マイクを使う許可がありません: ' + e.message, true);
+            return false;
+        }
+        // 許可を待つ間に別のモードへ切り替えられていたら捨てる
+        if (mode !== 'rx') { stream.getTracks().forEach(tr => tr.stop()); return true; }
+        micStream = stream;
+        analyser = ctx.createAnalyser();
+        analyser.fftSize = 1024;            // 48kHz で約 21ms の窓。短い「・」でも埋もれない
+        analyser.smoothingTimeConstant = 0;
+        // 出口（スピーカー）につながっていないノードはブラウザが処理を省くことがあるので、音量 0 でつないでおく
+        const mute = ctx.createGain();
+        mute.gain.value = 0;
+        ctx.createMediaStreamSource(micStream).connect(analyser).connect(mute).connect(ctx.destination);
+        rxLoop();
+        setStatus('受信中: ' + (freqEl.value / 1000).toFixed(1) + 'kHz を聞いています（マイク ' + Math.round(ctx.sampleRate / 1000) + 'kHz）');
+        return true;
+    }
+
+    function stopRx() {
+        clearInterval(rxTimer); rxTimer = null;
+        if (micStream) micStream.getTracks().forEach(tr => tr.stop());
+        micStream = null; analyser = null;
+        if (start !== null) keyUp(performance.now());
+        document.getElementById('meter-fill').style.width = '0';
+        document.getElementById('meter').classList.remove('hit');
+    }
+
+    // 受信ループ: 目当ての周波数の強さを「少し下の帯域の中央値」と比べた差（dB）で判定する。
+    // 周囲の雑音が大きくなっても差で見るので、しきい値を毎回合わせ直さなくて済む。
+    // チラつきで ・ を誤検出しないよう、状態が STABLE ms 続いたら確定し、時刻は変化した瞬間まで遡る。
+    const STABLE = 25, OFF_HYST = 6, METER_MAX = 40;
+    function rxLoop() {
+        const buf = new Float32Array(analyser.frequencyBinCount);
+        let raw = false, rawSince = 0, on = false;
+        rxTimer = setInterval(() => {
+            if (!analyser) return;
+            analyser.getFloatFrequencyData(buf);
+            const binHz = actx.sampleRate / analyser.fftSize;
+            const k = Math.round(Number(freqEl.value) / binHz);
+            const db = (i) => (i >= 0 && i < buf.length && isFinite(buf[i])) ? buf[i] : -160;
+            const sig = Math.max(db(k - 1), db(k), db(k + 1));
+            // 比較用: 目当てより 0.5〜1.5kHz 下。上側はマイクのフィルタで削られていることがあるので使わない
+            const ref = [];
+            for (let i = k - Math.round(1500 / binHz); i <= k - Math.round(500 / binHz); i++) ref.push(db(i));
+            ref.sort((a, b) => a - b);
+            const snr = sig - ref[ref.length >> 1];
+
+            const th = Number(rxThEl.value);
+            const now = performance.now();
+            const want = on ? snr > th - OFF_HYST : snr > th;
+            if (want !== raw) { raw = want; rawSince = now; }
+            if (raw !== on && now - rawSince >= STABLE) {
+                on = raw;
+                if (on) keyDown(rawSince); else keyUp(rawSince);
+            }
+
+            const fill = Math.max(0, Math.min(1, snr / METER_MAX));
+            document.getElementById('meter-fill').style.width = (fill * 100) + '%';
+            document.getElementById('meter').classList.toggle('hit', on);
+        }, 10);
+    }
+
+    async function setMode(m) {
+        if (m === mode) return;
+        if (mode === 'tx') stopTx();
+        if (mode === 'rx') stopRx();
+        mode = m;
+        document.querySelectorAll('.mode-group button').forEach(b => b.classList.toggle('on', b.dataset.mode === m));
+        document.body.classList.toggle('mode-rx', m === 'rx');
+        setStatus('');
+        if (m === 'tx') startTx();
+        if (m === 'rx') { const ok = await startRx(); if (!ok && mode === 'rx') setMode('local'); }
+    }
+
+    document.querySelectorAll('.mode-group button').forEach(b => {
+        b.addEventListener('click', () => setMode(b.dataset.mode));
+    });
+
+    freqEl.oninput = function() {
+        document.getElementById('v-freq').innerText = (this.value / 1000).toFixed(1) + "kHz";
+        if (osc) osc.frequency.setValueAtTime(Number(this.value), actx.currentTime);
+    };
+    function showRxTh() {
+        document.getElementById('v-rx').innerText = rxThEl.value + "dB";
+        document.getElementById('meter-th').style.left = Math.min(100, rxThEl.value / METER_MAX * 100) + '%';
+    }
+    rxThEl.oninput = showRxTh;
+    showRxTh();
 
     // リセット関数
     function fullReset() {
@@ -365,4 +599,4 @@
     document.getElementById('wait-thresh').oninput = function() { document.getElementById('v-wait').innerText = this.value + "ms"; };
 </script>
 </body>
-</html>
+</html>
